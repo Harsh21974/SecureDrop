@@ -7,8 +7,7 @@ use Illuminate\Support\Str;
 
 class SecureItem extends Model
 {
-    //
-    public $incrementing = false;
+    // public $incrementing = false;
     protected $keyType = 'string';
 
     protected $fillable = [
@@ -21,6 +20,7 @@ class SecureItem extends Model
         'view_count',
         'recipients',
         'token',
+        'password',
     ];
 
     protected $casts = [

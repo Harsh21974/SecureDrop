@@ -7,19 +7,25 @@ use App\Mail\SecureLinkMail;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\DB;
 
 class SecureItemController extends Controller
 {
+    // ==========================
+    // CREATE SECURE ITEM
+    // ==========================
     public function store(Request $request)
     {
         $request->validate([
             'type' => 'required|in:text,file',
             'encrypted_data' => 'required|string',
             'filename' => 'nullable|string',
+            'password' => 'required|string|min:6', // ✅ ADD
             'expires_in' => 'nullable|integer|min:1|max:1440',
             'max_views' => 'nullable|integer|min:1|max:100',
             'recipients' => 'nullable|array',
-            'recipients.*' => 'email', // validate each email
+            'recipients.*' => 'email',
         ]);
 
         $expiresInMinutes = $request->expires_in ?? 1440;
@@ -32,47 +38,85 @@ class SecureItemController extends Controller
             'max_views' => $request->max_views ?? 1,
             'view_count' => 0,
             'recipients' => $request->recipients,
+            'password' => Hash::make($request->password), // ✅ HASH PASSWORD
         ]);
 
-        $secureLink = url("/decrypt/{$secureItem->id}");
+        // ✅ USE TOKEN NOT ID
+        $secureLink = url("/decrypt/{$secureItem->token}");
 
-        // Send emails if provided
+        $emailSent = false;
+
         if (!empty($request->recipients)) {
             foreach ($request->recipients as $email) {
-                Mail::to($email)->queue(new SecureLinkMail($secureLink));
+                Mail::to($email)->send(new SecureLinkMail($secureLink));
             }
+            $emailSent = true;
         }
 
         return response()->json([
-            'link' => $secureLink
+            'link' => $secureLink,
+            'email_sent' => $emailSent
         ]);
     }
 
-    public function show($id)
+    // ==========================
+    // CHECK LINK (NO INCREMENT)
+    // ==========================
+    public function show($token)
     {
-        $item = SecureItem::findOrFail($id);
+        $item = SecureItem::where('token', $token)->firstOrFail();
 
-        // Expiration check
-        if ($item->expires_at && now()->greaterThan($item->expires_at)) {
+        if (now()->greaterThan($item->expires_at)) {
             return response()->json([
                 'message' => 'Link has expired.'
             ], 410);
         }
 
-        // View limit check
         if ($item->view_count >= $item->max_views) {
             return response()->json([
                 'message' => 'View limit exceeded.'
             ], 403);
         }
 
-        // Increment view count
-        $item->increment('view_count');
-
         return response()->json([
-            'type' => $item->type,
-            'encrypted_data' => $item->encrypted_data,
-            'filename' => $item->filename,
+            'status' => 'ready'
         ]);
+    }
+
+    // ==========================
+    // DECRYPT (INCREMENT ONLY AFTER PASSWORD SUCCESS)
+    // ==========================
+    public function decrypt(Request $request, $token)
+    {
+        $request->validate([
+            'password' => 'required'
+        ]);
+
+        return DB::transaction(function () use ($request, $token) {
+            $item = SecureItem::where('token', $token)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if (now()->greaterThan($item->expires_at)) {
+                return response()->json(['message' => 'Link expired'], 410);
+            }
+
+            if ($item->view_count >= $item->max_views) {
+                return response()->json(['message' => 'View limit exceeded'], 403);
+            }
+
+            if (!Hash::check($request->password, $item->password)) {
+                return response()->json(['message' => 'Incorrect password'], 401);
+            }
+
+            // ✅ ONLY NOW increment
+            $item->increment('view_count');
+
+            return response()->json([
+                'type' => $item->type,
+                'encrypted_data' => $item->encrypted_data,
+                'filename' => $item->filename,
+            ]);
+        });
     }
 }
