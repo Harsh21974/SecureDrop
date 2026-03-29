@@ -1,6 +1,8 @@
 import React, { useState } from "react";
 import { encryptData } from "../aes";
 import { Copy, UploadCloud, Lock, FileText, Eye, EyeOff } from "lucide-react";
+import api from "../../src/api";                               // ✅ correct path to api.js
+import { useAuth } from "../../src/contexts/AuthContext";
 
 export default function Encrypt() {
     const [mode, setMode] = useState("text");
@@ -16,6 +18,7 @@ export default function Encrypt() {
     const [emails, setEmails] = useState([""]);
     const [emailSent, setEmailSent] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
+    const { user } = useAuth();
 
     const MAX_FILE_SIZE = 20 * 1024 * 1024;
 
@@ -33,7 +36,7 @@ export default function Encrypt() {
 
         try {
             setLoading(true);
-            setLink("");
+            setLink("");    
 
             let buffer;
             let filename = null;
@@ -48,26 +51,18 @@ export default function Encrypt() {
 
             const encryptedBase64 = await encryptData(buffer, password);
 
-            const response = await fetch("/api/secure-items", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    Accept: "application/json",
-                },
-                body: JSON.stringify({
-                    type: mode,
-                    encrypted_data: encryptedBase64,
-                    filename,
-                    password: password,
-                    expires_in: expiresIn,
-                    max_views: maxViews,
-                    recipients: emails.filter(e => e.trim() !== "")
-                }),
+            // ✅ Use api.post (axios) – no need for response.json()
+            const response = await api.post('/secure-items', {
+                type: mode,
+                encrypted_data: encryptedBase64,
+                filename,
+                password: password,
+                expires_in: expiresIn,
+                max_views: maxViews,
+                recipients: emails.filter(e => e.trim() !== "")
             });
 
-            const result = await response.json();
-
-            if (!response.ok) throw new Error(result.message);
+            const result = response.data; // ✅ Axios automatically parses JSON
 
             if (result.email_sent) {
                 setEmailSent(true);
@@ -76,7 +71,9 @@ export default function Encrypt() {
                 setShowDialog(true);
             }
         } catch (err) {
-            alert(err.message);
+            // Extract error message from server response if available
+            const message = err.response?.data?.message || err.message || 'An error occurred';
+            alert(message);
         } finally {
             setLoading(false);
         }
@@ -183,7 +180,7 @@ export default function Encrypt() {
                         <button
                             type="button"
                             onClick={() => setShowPassword(!showPassword)}
-                            className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 transition"
+                            className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 transition"  
                         >
                             {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                         </button>

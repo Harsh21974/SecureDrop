@@ -7,7 +7,7 @@ use Illuminate\Support\Str;
 
 class SecureItem extends Model
 {
-    // public $incrementing = false;
+    public $incrementing = false;
     protected $keyType = 'string';
 
     protected $fillable = [
@@ -21,7 +21,13 @@ class SecureItem extends Model
         'recipients',
         'token',
         'password',
+        'user_id',
     ];
+
+    public function user()
+    {
+        return $this->belongsTo(\App\Models\User::class);
+    }
 
     protected $casts = [
         'expires_at' => 'datetime',

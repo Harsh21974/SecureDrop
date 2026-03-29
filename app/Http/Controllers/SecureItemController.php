@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Auth;
 
 class SecureItemController extends Controller
 {
@@ -29,6 +30,7 @@ class SecureItemController extends Controller
         ]);
 
         $expiresInMinutes = $request->expires_in ?? 1440;
+        $user = Auth::guard('sanctum')->user();
 
         $secureItem = SecureItem::create([
             'type' => $request->type,
@@ -39,6 +41,7 @@ class SecureItemController extends Controller
             'view_count' => 0,
             'recipients' => $request->recipients,
             'password' => Hash::make($request->password), // ✅ HASH PASSWORD
+            'user_id' => $user ? $user->id : null,
         ]);
 
         // ✅ USE TOKEN NOT ID
