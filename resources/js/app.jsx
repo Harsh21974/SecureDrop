@@ -9,8 +9,11 @@ import Home from "./pages/Home";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Profile from "./pages/Profile";
+import Security from "./pages/Security";  // ✅ ADD THIS IMPORT
 import Layout from "../views/components/Layout";
 import ProtectedRoute from './components/ProtectedRoute';
+import WorkspaceDashboard from "./pages/workspace/WorkspaceDashboard";
+import AcceptInvite from "./pages/workspace/AcceptInvite";
 
 // Admin imports
 import AdminRoute from './components/AdminRoute';
@@ -34,9 +37,20 @@ function App() {
                         <Route path="/pricing" element={<Pricing />} />
                         <Route path="/login" element={<Login />} />
                         <Route path="/register" element={<Register />} />
+                        <Route path="/accept-invite/:token" element={<AcceptInvite />} />
                         <Route path="/profile" element={
                             <ProtectedRoute>
                                 <Profile />
+                            </ProtectedRoute>
+                        } />
+                        <Route path="/security" element={
+                            <ProtectedRoute>
+                                <Security />
+                            </ProtectedRoute>
+                        } />  {/* ✅ ADD SECURITY ROUTE */}
+                        <Route path="/workspaces" element={
+                            <ProtectedRoute>
+                                <WorkspaceDashboard />
                             </ProtectedRoute>
                         } />
                     </Route>

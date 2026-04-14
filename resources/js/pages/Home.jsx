@@ -105,6 +105,12 @@ export default function Home() {
                                 Encrypt Now
                                 <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
                             </Link>
+                            <Link
+                                to="/workspaces"
+                                className="bg-white hover:bg-gray-50 text-gray-700 px-8 py-4 rounded-2xl font-semibold transition-all duration-200 ease-in-out shadow-lg hover:shadow-gray-400/20 hover:-translate-y-0.5 active:scale-95 border border-gray-200"
+                            >
+                                Workspaces
+                            </Link>
                             {/* <Link
                                 to="/decrypt"
                                 className="bg-white hover:bg-gray-50 text-gray-700 px-8 py-4 rounded-2xl font-semibold transition-all duration-200 ease-in-out shadow-lg hover:shadow-gray-400/20 hover:-translate-y-0.5 active:scale-95 border border-gray-200"

@@ -24,13 +24,15 @@ export default function Header() {
                 {/* Nav - Show different nav items for admin vs user */}
                 <nav className="hidden md:flex items-center gap-6 lg:gap-8 text-sm font-medium text-gray-600">
                     {!isAdmin ? (
-                        // Regular user navigation
                         <>
                             <Link to="/" className="hover:text-emerald-600 transition relative py-1">
                                 Home
                             </Link>
                             <Link to="/encrypt" className="hover:text-emerald-600 transition relative py-1">
                                 Encrypt Text
+                            </Link>
+                            <Link to="/workspaces" className="hover:text-emerald-600 transition relative py-1">
+                                Workspaces
                             </Link>
                             <Link to="/pricing" className="hover:text-emerald-600 transition relative py-1">
                                 Pricing

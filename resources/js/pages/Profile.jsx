@@ -3,6 +3,7 @@ import { useAuth } from "../../src/contexts/AuthContext";
 import api from "../../src/api";        
 import { Copy, Trash2, FileText, File, Clock, Eye, Link as LinkIcon } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import PendingInvites from "./workspace/PendingInvites";
 
 export default function Profile() {
     const { user, logout } = useAuth();
@@ -31,6 +32,7 @@ export default function Profile() {
         setCopiedToken(token);
         setTimeout(() => setCopiedToken(null), 2000);
     };
+    
 
     const deleteItem = async (token) => {
         if (!confirm('Are you sure you want to delete this item?')) return;
@@ -42,6 +44,11 @@ export default function Profile() {
         }
     };
 
+    const handleInviteAccepted = (workspaceId) => {
+        console.log('Invite accepted for workspace:', workspaceId);
+        // Optional: Refresh workspace list or show a success toast
+    };
+    
     const getStatus = (item) => {
         const now = new Date();
         const expiresAt = new Date(item.expires_at);
@@ -53,6 +60,9 @@ export default function Profile() {
     return (
         <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-teal-50 py-12 px-4 sm:px-6 lg:px-8">
             <div className="max-w-7xl mx-auto">
+                <div className="mb-8">
+                    <PendingInvites onInviteAccepted={handleInviteAccepted} />
+                </div>
                 {/* Profile Header */}
                 <div className="bg-white rounded-3xl shadow-xl p-8 mb-8">
                     <div className="flex items-center justify-between">
@@ -73,6 +83,19 @@ export default function Profile() {
                             Logout
                         </button>
                     </div>
+                </div>
+
+                <div className="bg-white rounded-3xl shadow-xl p-6 mb-8">
+                    <h2 className="text-lg font-semibold text-gray-900 mb-2">Workspaces</h2>
+                    <p className="text-sm text-gray-500 mb-3">
+                        Collaborate securely with your team using workspaces.
+                    </p>
+                    <a
+                        href="/workspaces"
+                        className="text-teal-600 hover:underline font-medium"
+                    >
+                        Go to Workspaces →
+                    </a>
                 </div>
 
                 {/* Items List */}

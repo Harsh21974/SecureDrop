@@ -20,7 +20,7 @@ class SecureItem extends Model
         'view_count',
         'recipients',
         'token',
-        'password',
+        //'password',
         'user_id',
     ];
 

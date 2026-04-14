@@ -10,13 +10,15 @@ use Laravel\Sanctum\HasApiTokens;
 
 class AuthController extends Controller
 {
-    // Register
+    // Register - Modified to accept public key and encrypted private key
     public function register(Request $request)
     {
         $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users',
             'password' => 'required|string|min:8|confirmed',
+            'public_key' => 'required|string',
+            'encrypted_private_key' => 'required|string',
         ]);
 
         $user = User::create([
@@ -25,6 +27,9 @@ class AuthController extends Controller
             'password' => Hash::make($request->password),
             'role' => 'user',
             'is_premium' => false,
+            'public_key' => $request->public_key,
+            'encrypted_private_key' => $request->encrypted_private_key,
+            'key_version' => '1',
         ]);
 
         $token = $user->createToken('auth_token')->plainTextToken;
@@ -35,7 +40,7 @@ class AuthController extends Controller
         ], 201);
     }
 
-    // Login
+    // Login - No changes needed
     public function login(Request $request)
     {
         $request->validate([
@@ -58,7 +63,7 @@ class AuthController extends Controller
         ]);
     }
 
-    // Logout
+    // Logout - No changes
     public function logout(Request $request)
     {
         $request->user()->currentAccessToken()->delete();
@@ -68,7 +73,7 @@ class AuthController extends Controller
         ]);
     }
 
-    // Get authenticated user
+    // Get authenticated user - No changes
     public function me(Request $request)
     {
         return response()->json($request->user());

@@ -3,7 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\SecureItem;
-use App\Mail\SecureLinkMail;
+use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
@@ -13,24 +13,51 @@ use Illuminate\Support\Facades\Auth;
 
 class SecureItemController extends Controller
 {
-    // ==========================
-    // CREATE SECURE ITEM
-    // ==========================
+    // CREATE SECURE ITEM - Modified for public key encryption
     public function store(Request $request)
     {
         $request->validate([
             'type' => 'required|in:text,file',
             'encrypted_data' => 'required|string',
             'filename' => 'nullable|string',
-            'password' => 'required|string|min:6', // ✅ ADD
             'expires_in' => 'nullable|integer|min:1|max:1440',
             'max_views' => 'nullable|integer|min:1|max:100',
-            'recipients' => 'nullable|array',
-            'recipients.*' => 'email',
+            'recipient_email' => 'nullable|email|exists:users,email',
+            'encryption_type' => 'required|in:password,public_key',
         ]);
+
+        // For password-based encryption (legacy support)
+        if ($request->encryption_type === 'password') {
+            $request->validate([
+                'password' => 'required|string|min:6',
+            ]);
+        }
+
+        // Text length validation
+        if ($request->type === 'text') {
+            $decryptedData = base64_decode($request->encrypted_data);
+            if (strlen($decryptedData) > 50000) {
+                return response()->json([
+                    'message' => 'Text exceeds 50,000 character limit'
+                ], 400);
+            }
+        }
 
         $expiresInMinutes = $request->expires_in ?? 1440;
         $user = Auth::guard('sanctum')->user();
+        
+        // Find recipient if public key encryption
+        $recipientId = null;
+        if ($request->encryption_type === 'public_key' && $request->recipient_email) {
+            $recipient = User::where('email', $request->recipient_email)->first();
+            if ($recipient && $recipient->public_key) {
+                $recipientId = $recipient->id;
+            } else {
+                return response()->json([
+                    'message' => 'Recipient does not have encryption keys set up'
+                ], 400);
+            }
+        }
 
         $secureItem = SecureItem::create([
             'type' => $request->type,
@@ -39,32 +66,36 @@ class SecureItemController extends Controller
             'expires_at' => Carbon::now()->addMinutes($expiresInMinutes),
             'max_views' => $request->max_views ?? 1,
             'view_count' => 0,
-            'recipients' => $request->recipients,
-            'password' => Hash::make($request->password), // ✅ HASH PASSWORD
+            'recipients' => $request->recipient_email ? [$request->recipient_email] : null,
+            //'password' => $request->encryption_type === 'password' ? Hash::make($request->password) : null,
             'user_id' => $user ? $user->id : null,
+            'recipient_id' => $recipientId,
+            'encryption_type' => $request->encryption_type,
         ]);
 
-        // ✅ USE TOKEN NOT ID
         $secureLink = url("/decrypt/{$secureItem->token}");
-
         $emailSent = false;
 
-        if (!empty($request->recipients)) {
-            foreach ($request->recipients as $email) {
-                Mail::to($email)->send(new SecureLinkMail($secureLink));
-            }
+        // Send email notification if recipient provided
+        if ($request->recipient_email) {
+            Mail::send('emails.secure-link', [
+                'sender_name' => $user ? $user->name : 'Someone',
+                'link' => $secureLink,
+            ], function ($message) use ($request) {
+                $message->to($request->recipient_email)
+                        ->subject('You received a secure message on SecureDrop');
+            });
             $emailSent = true;
         }
 
         return response()->json([
             'link' => $secureLink,
-            'email_sent' => $emailSent
+            'email_sent' => $emailSent,
+            'encryption_type' => $request->encryption_type,
         ]);
     }
 
-    // ==========================
-    // CHECK LINK (NO INCREMENT)
-    // ==========================
+    // CHECK LINK (No changes)
     public function show($token)
     {
         $item = SecureItem::where('token', $token)->firstOrFail();
@@ -82,19 +113,17 @@ class SecureItemController extends Controller
         }
 
         return response()->json([
-            'status' => 'ready'
+            'status' => 'ready',
+            'encryption_type' => $item->encryption_type,
         ]);
     }
 
-    // ==========================
-    // DECRYPT (INCREMENT ONLY AFTER PASSWORD SUCCESS)
-    // ==========================
+    // DECRYPT - Modified to handle both encryption types
     public function decrypt(Request $request, $token)
     {
-        $request->validate([
-            'password' => 'required'
-        ]);
-
+        // For password-based encryption, require password
+        // For public-key encryption, no password needed (handled client-side)
+        
         return DB::transaction(function () use ($request, $token) {
             $item = SecureItem::where('token', $token)
                 ->lockForUpdate()
@@ -108,17 +137,30 @@ class SecureItemController extends Controller
                 return response()->json(['message' => 'View limit exceeded'], 403);
             }
 
-            if (!Hash::check($request->password, $item->password)) {
-                return response()->json(['message' => 'Incorrect password'], 401);
+            // For password-based encryption
+            if ($item->encryption_type === 'password') {
+                $request->validate(['password' => 'required']);
+                
+                if (!Hash::check($request->password, $item->password)) {
+                    return response()->json(['message' => 'Incorrect password'], 401);
+                }
             }
 
-            // ✅ ONLY NOW increment
+            // For public-key encryption, verify the recipient is the logged-in user
+            if ($item->encryption_type === 'public_key') {
+                $user = Auth::user();
+                if (!$user || $user->id !== $item->recipient_id) {
+                    return response()->json(['message' => 'You are not authorized to decrypt this message'], 403);
+                }
+            }
+
             $item->increment('view_count');
 
             return response()->json([
                 'type' => $item->type,
                 'encrypted_data' => $item->encrypted_data,
                 'filename' => $item->filename,
+                'encryption_type' => $item->encryption_type,
             ]);
         });
     }
