@@ -119,49 +119,29 @@ class SecureItemController extends Controller
     }
 
     // DECRYPT - Modified to handle both encryption types
-    public function decrypt(Request $request, $token)
+    public function decrypt($token)
     {
-        // For password-based encryption, require password
-        // For public-key encryption, no password needed (handled client-side)
-        
-        return DB::transaction(function () use ($request, $token) {
-            $item = SecureItem::where('token', $token)
-                ->lockForUpdate()
-                ->firstOrFail();
+        $item = SecureItem::where('token', $token)->first();
 
-            if (now()->greaterThan($item->expires_at)) {
-                return response()->json(['message' => 'Link expired'], 410);
-            }
+        if (!$item) {
+            return response()->json(['message' => 'Invalid link'], 404);
+        }
 
-            if ($item->view_count >= $item->max_views) {
-                return response()->json(['message' => 'View limit exceeded'], 403);
-            }
+        if ($item->expires_at < now()) {
+            return response()->json(['message' => 'Link expired'], 400);
+        }
 
-            // For password-based encryption
-            if ($item->encryption_type === 'password') {
-                $request->validate(['password' => 'required']);
-                
-                if (!Hash::check($request->password, $item->password)) {
-                    return response()->json(['message' => 'Incorrect password'], 401);
-                }
-            }
+        if ($item->view_count >= $item->max_views) {
+            return response()->json(['message' => 'View limit exceeded'], 400);
+        }
 
-            // For public-key encryption, verify the recipient is the logged-in user
-            if ($item->encryption_type === 'public_key') {
-                $user = Auth::user();
-                if (!$user || $user->id !== $item->recipient_id) {
-                    return response()->json(['message' => 'You are not authorized to decrypt this message'], 403);
-                }
-            }
+        // Increment views
+        $item->increment('view_count');
 
-            $item->increment('view_count');
-
-            return response()->json([
-                'type' => $item->type,
-                'encrypted_data' => $item->encrypted_data,
-                'filename' => $item->filename,
-                'encryption_type' => $item->encryption_type,
-            ]);
-        });
+        return response()->json([
+            'encrypted_data' => $item->encrypted_data,
+            'type' => $item->type,
+            'filename' => $item->filename,
+        ]);
     }
 }

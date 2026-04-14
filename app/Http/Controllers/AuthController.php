@@ -17,8 +17,8 @@ class AuthController extends Controller
             'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users',
             'password' => 'required|string|min:8|confirmed',
-            'public_key' => 'required|string',
-            'encrypted_private_key' => 'required|string',
+            'public_key' => 'required|string',  // ✅ ADD THIS
+            'encrypted_private_key' => 'required|string',  // ✅ ADD THIS
         ]);
 
         $user = User::create([
@@ -27,9 +27,9 @@ class AuthController extends Controller
             'password' => Hash::make($request->password),
             'role' => 'user',
             'is_premium' => false,
-            'public_key' => $request->public_key,
-            'encrypted_private_key' => $request->encrypted_private_key,
-            'key_version' => '1',
+            'public_key' => $request->public_key,  // ✅ ADD THIS
+            'encrypted_private_key' => $request->encrypted_private_key,  // ✅ ADD THIS
+            'key_version' => '1',  // ✅ ADD THIS
         ]);
 
         $token = $user->createToken('auth_token')->plainTextToken;
