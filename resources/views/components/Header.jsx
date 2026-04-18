@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import React, { useState } from "react";
 import { useAuth } from "../../src/contexts/AuthContext";
 import { User, LogOut, LayoutDashboard, Shield } from "lucide-react";
+import NotificationBell from '../../js/components/NotificationBell';
 
 export default function Header() {
     const { user, logout } = useAuth();
@@ -56,6 +57,7 @@ export default function Header() {
 
                 {/* Auth Buttons / User Menu */}
                 <div className="flex items-center gap-2 sm:gap-3">
+                    {user && <NotificationBell />}
                     {user ? (
                         <div className="relative">
                             <button

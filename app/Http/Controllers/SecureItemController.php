@@ -9,9 +9,11 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use App\Traits\Notifiable;
 
 class SecureItemController extends Controller
 {
+    use Notifiable;
     public function store(Request $request)
     {
         $request->validate([
@@ -94,6 +96,21 @@ class SecureItemController extends Controller
             $emailSent = true;
         }
 
+        // Create in-app notifications for all recipients
+        $recipientIds = [];
+        foreach ($request->recipients as $recipientData) {
+            $recipient = User::where('email', $recipientData['email'])->first();
+            $recipientIds[] = $recipient->id;
+        }
+
+        $this->createNotificationsForMultipleUsers(
+            $recipientIds,
+            'secure_message',
+            'New Secure Message',
+            $user ? $user->name . ' sent you a secure message' : 'Someone sent you a secure message',
+            $secureLink,
+            $secureItem->token
+        );
         return response()->json([
             'link' => $secureLink,
             'email_sent' => $emailSent,

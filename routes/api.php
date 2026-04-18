@@ -11,6 +11,7 @@ use App\Http\Controllers\WorkspaceController;
 use App\Http\Controllers\WorkspaceInviteController;
 use App\Http\Controllers\KeyController;
 use App\Http\Controllers\WorkspaceMessageController;
+use App\Http\Controllers\NotificationController;
 
 Route::post('/secure-items', [SecureItemController::class, 'store']);
 Route::get('/secure-items/{token}', [SecureItemController::class, 'show']);
@@ -63,6 +64,12 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // ✅ MOVED DECRYPT ROUTE INSIDE AUTH GROUP
     Route::post('/decrypt/{token}', [SecureItemController::class, 'decrypt']);
+
+    Route::get('/notifications', [NotificationController::class, 'index']);
+    Route::get('/notifications/unread-count', [NotificationController::class, 'unreadCount']);
+    Route::post('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
+    Route::post('/notifications/mark-all-read', [NotificationController::class, 'markAllAsRead']);
+    Route::delete('/notifications/{id}', [NotificationController::class, 'destroy']);
 });
 
 

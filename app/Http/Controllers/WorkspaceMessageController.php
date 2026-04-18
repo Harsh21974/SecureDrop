@@ -13,9 +13,11 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use App\Traits\Notifiable;
 
 class WorkspaceMessageController extends Controller
 {
+    use Notifiable;
     // API: Send message
     public function store(Request $request, $workspaceId)
     {
@@ -96,6 +98,17 @@ class WorkspaceMessageController extends Controller
                 $message->to($recipient->email)
                         ->subject('New secure message in workspace');
             });
+            
+            // Create in-app notification for recipient
+            $decryptUrl = url("/decrypt/{$secureItem->token}");
+            $this->createNotification(
+                $request->recipient_id,
+                'workspace_message',
+                'New Workspace Message',
+                Auth::user()->name . ' sent you a message in workspace "' . $workspace->name . '"',
+                $decryptUrl,
+                $secureItem->token
+            );
             
             return response()->json([
                 'message' => 'Message sent successfully',
