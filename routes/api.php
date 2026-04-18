@@ -9,11 +9,11 @@ use App\Http\Controllers\UserItemController;
 // Workspace Controllers
 use App\Http\Controllers\WorkspaceController;
 use App\Http\Controllers\WorkspaceInviteController;
-use App\Http\Controllers\KeyController;  // ✅ ADD THIS
+use App\Http\Controllers\KeyController;
+use App\Http\Controllers\WorkspaceMessageController;
 
 Route::post('/secure-items', [SecureItemController::class, 'store']);
 Route::get('/secure-items/{token}', [SecureItemController::class, 'show']);
-Route::post('/decrypt/{token}', [SecureItemController::class, 'decrypt']);
 
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
@@ -47,12 +47,20 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/pending-invites', [WorkspaceInviteController::class, 'getPendingInvites']);
     Route::delete('/pending-invites/{id}', [WorkspaceInviteController::class, 'declineInvite']);
 
-    // ✅ ADD THESE KEY MANAGEMENT ROUTES
     // Key management routes
     Route::get('/keys/public', [KeyController::class, 'getPublicKey']);
     Route::get('/keys/my-private', [KeyController::class, 'getMyPrivateKey']);
     Route::put('/keys', [KeyController::class, 'updateKeys']);
     Route::get('/users/search', [KeyController::class, 'searchUsers']);
+
+    // Workspace Messages
+    Route::get('/workspaces/{workspaceId}/messages', [WorkspaceMessageController::class, 'index']);
+    Route::post('/workspaces/{workspaceId}/messages', [WorkspaceMessageController::class, 'store']);
+    Route::post('/workspaces/{workspaceId}/messages/{messageId}/read', [WorkspaceMessageController::class, 'markAsRead']);
+    Route::delete('/workspaces/{workspaceId}/messages/{messageId}', [WorkspaceMessageController::class, 'destroy']);
+
+    // ✅ MOVED DECRYPT ROUTE INSIDE AUTH GROUP
+    Route::post('/decrypt/{token}', [SecureItemController::class, 'decrypt']);
 });
 
 

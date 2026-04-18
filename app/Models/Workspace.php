@@ -9,7 +9,7 @@ class Workspace extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['name', 'owner_id'];
+    protected $fillable = ['name', 'owner_id', 'encrypted_workspace_private_key', 'workspace_public_key'];
 
     public function owner()
     {
@@ -24,5 +24,10 @@ class Workspace extends Model
     public function invites()
     {
         return $this->hasMany(WorkspaceInvite::class);
+    }
+    
+    public function messages()
+    {
+        return $this->hasMany(WorkspaceMessage::class);
     }
 }

@@ -87,4 +87,15 @@ class KeyController extends Controller
 
         return response()->json($users);
     }
+    // Get user by ID
+    public function getUserById($id)
+    {
+        $user = User::findOrFail($id);
+        return response()->json([
+            'id' => $user->id,
+            'name' => $user->name,
+            'email' => $user->email,
+            'public_key' => $user->public_key,
+        ]);
+    }
 }

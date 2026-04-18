@@ -1,8 +1,12 @@
 import React, { useEffect, useState } from "react";
 import api from "../../../src/api";
-import { Plus, Users, Crown, Mail, X, Trash2, UserMinus, Check, AlertCircle, Send } from "lucide-react";
+import { useAuth } from "../../../src/contexts/AuthContext";
+import { useNavigate } from "react-router-dom";
+import { Plus, Users, Crown, Mail, X, Trash2, UserMinus, Check, AlertCircle, Send, MessageSquare } from "lucide-react";
 
 const WorkspaceDashboard = () => {
+    const navigate = useNavigate();
+    const { user } = useAuth(); // ✅ Add this to get current user
     const [workspaces, setWorkspaces] = useState([]);
     const [loading, setLoading] = useState(true);
     const [showCreateModal, setShowCreateModal] = useState(false);
@@ -11,6 +15,9 @@ const WorkspaceDashboard = () => {
     const [inviteEmail, setInviteEmail] = useState("");
     const [inviteStatus, setInviteStatus] = useState({});
     const [sendingInvite, setSendingInvite] = useState(false);
+    const [showSendModal, setShowSendModal] = useState(false);
+    const [selectedWorkspaceForSend, setSelectedWorkspaceForSend] = useState(null);
+    const [selectedMembers, setSelectedMembers] = useState([]);
 
     useEffect(() => {
         fetchWorkspaces();
@@ -103,6 +110,45 @@ const WorkspaceDashboard = () => {
         }
     };
 
+    const openSendModal = (workspace, members) => {
+        setSelectedWorkspaceForSend(workspace);
+        setSelectedMembers([]);
+        setShowSendModal(true);
+    };
+
+    const toggleMemberSelection = (memberId) => {
+        setSelectedMembers(prev => 
+            prev.includes(memberId) 
+                ? prev.filter(id => id !== memberId)
+                : [...prev, memberId]
+        );
+    };
+
+    const selectAllMembers = (members) => {
+        const allMemberIds = members
+            .filter(m => m.user_id !== user?.id) // ✅ Exclude self
+            .map(m => m.user_id);
+        setSelectedMembers(allMemberIds);
+    };
+
+    const sendToSelectedMembers = () => {
+        if (selectedMembers.length === 0) {
+            alert("Please select at least one recipient");
+            return;
+        }
+        // Navigate to send page with multiple recipients
+        navigate(`/workspaces/${selectedWorkspaceForSend.id}/send?recipients=${selectedMembers.join(',')}`);
+        setShowSendModal(false);
+    };
+
+    if (loading) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-gray-50">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
+            </div>
+        );
+    }
+
     return (
         <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
             {/* Header */}
@@ -125,9 +171,7 @@ const WorkspaceDashboard = () => {
             </div>
 
             <div className="max-w-7xl mx-auto px-6 py-8">
-                {loading ? (
-                    <div className="text-center py-12 text-gray-500">Loading workspaces...</div>
-                ) : workspaces.length === 0 ? (
+                {workspaces.length === 0 ? (
                     <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-12 text-center">
                         <Users className="mx-auto text-gray-400 mb-4" size={48} />
                         <h3 className="text-lg font-semibold text-gray-900 mb-2">No Workspaces Yet</h3>
@@ -145,6 +189,9 @@ const WorkspaceDashboard = () => {
                             const isExpanded = expandedWorkspace === workspace.id;
                             const status = inviteStatus[workspace.id];
                             
+                            // Filter out current user from members list for sending
+                            const otherMembers = workspace.members?.filter(m => m.user_id !== user?.id) || [];
+                            
                             return (
                                 <div key={workspace.id} className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden transition hover:shadow-md">
                                     {/* Workspace Header */}
@@ -161,7 +208,26 @@ const WorkspaceDashboard = () => {
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-2">
-                                            {/* Invite Button - Smooth expand/collapse */}
+                                            {/* Messages Button */}
+                                            <button
+                                                onClick={() => navigate(`/workspaces/${workspace.id}/messages`)}
+                                                className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+                                            >
+                                                <Mail size={14} />
+                                                Messages
+                                            </button>
+                                            
+                                            {/* Send to All Button */}
+                                            {otherMembers.length > 0 && (
+                                                <button
+                                                    onClick={() => openSendModal(workspace, workspace.members)}
+                                                    className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2"
+                                                >
+                                                    <Send size={14} />
+                                                    Send to All
+                                                </button>
+                                            )}
+                                            
                                             {canInvite && (
                                                 <button
                                                     onClick={() => setExpandedWorkspace(isExpanded ? null : workspace.id)}
@@ -220,7 +286,6 @@ const WorkspaceDashboard = () => {
                                                     </button>
                                                 </div>
                                                 
-                                                {/* Status Message */}
                                                 {status && (
                                                     <div className={`mt-3 flex items-center gap-2 text-sm p-2 rounded-lg ${
                                                         status.type === 'success' 
@@ -246,33 +311,53 @@ const WorkspaceDashboard = () => {
                                             <span className="text-xs text-gray-400">{workspace.members?.length} total</span>
                                         </div>
                                         <div className="space-y-2">
-                                            {workspace.members?.map(member => (
-                                                <div key={member.id} className="flex items-center justify-between py-2.5 border-b border-gray-100 last:border-0 hover:bg-gray-50/50 px-2 rounded-lg transition">
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="w-9 h-9 bg-gradient-to-br from-teal-100 to-teal-200 rounded-full flex items-center justify-center">
-                                                            <span className="text-sm font-semibold text-teal-700">
-                                                                {member.user?.name?.charAt(0)?.toUpperCase() || '?'}
-                                                            </span>
+                                            {workspace.members?.map(member => {
+                                                const isCurrentUser = member.user_id === user?.id;
+                                                const canSend = !isCurrentUser; // ✅ Cannot send to self
+                                                
+                                                return (
+                                                    <div key={member.id} className="flex items-center justify-between py-2.5 border-b border-gray-100 last:border-0 hover:bg-gray-50/50 px-2 rounded-lg transition">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="w-9 h-9 bg-gradient-to-br from-teal-100 to-teal-200 rounded-full flex items-center justify-center">
+                                                                <span className="text-sm font-semibold text-teal-700">
+                                                                    {member.user?.name?.charAt(0)?.toUpperCase() || '?'}
+                                                                </span>
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-sm font-medium text-gray-900">
+                                                                    {member.user?.name}
+                                                                    {isCurrentUser && <span className="text-xs text-gray-400 ml-1">(you)</span>}
+                                                                </p>
+                                                                <p className="text-xs text-gray-500">{member.user?.email}</p>
+                                                            </div>
                                                         </div>
-                                                        <div>
-                                                            <p className="text-sm font-medium text-gray-900">{member.user?.name}</p>
-                                                            <p className="text-xs text-gray-500">{member.user?.email}</p>
+                                                        <div className="flex items-center gap-2">
+                                                            {/* Send Message Button - Only for other members, not self */}
+                                                            {canSend && (
+                                                                <button
+                                                                    onClick={() => navigate(`/workspaces/${workspace.id}/send?recipient=${member.user_id}`)}
+                                                                    className="text-teal-600 hover:text-teal-700 text-xs flex items-center gap-1 px-2 py-1 rounded hover:bg-teal-50"
+                                                                    title="Send secure message"
+                                                                >
+                                                                    <Send size={12} />
+                                                                    Send
+                                                                </button>
+                                                            )}
+                                                            
+                                                            {getRoleBadge(member.role)}
+                                                            {isOwner && member.role !== 'owner' && (
+                                                                <button
+                                                                    onClick={() => removeMember(workspace.id, member.id)}
+                                                                    className="text-gray-400 hover:text-red-600 transition p-1 rounded hover:bg-red-50"
+                                                                    title="Remove Member"
+                                                                >
+                                                                    <UserMinus size={14} />
+                                                                </button>
+                                                            )}
                                                         </div>
                                                     </div>
-                                                    <div className="flex items-center gap-2">
-                                                        {getRoleBadge(member.role)}
-                                                        {isOwner && member.role !== 'owner' && (
-                                                            <button
-                                                                onClick={() => removeMember(workspace.id, member.id)}
-                                                                className="text-gray-400 hover:text-red-600 transition p-1 rounded hover:bg-red-50"
-                                                                title="Remove Member"
-                                                            >
-                                                                <UserMinus size={14} />
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            ))}
+                                                );
+                                            })}
                                         </div>
                                     </div>
                                 </div>
@@ -282,7 +367,7 @@ const WorkspaceDashboard = () => {
                 )}
             </div>
 
-            {/* Create Workspace Modal - Keep as modal */}
+            {/* Create Workspace Modal */}
             {showCreateModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-fadeIn">
                     <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl transform animate-scaleIn">
@@ -307,6 +392,70 @@ const WorkspaceDashboard = () => {
                             </button>
                             <button onClick={createWorkspace} className="flex-1 bg-teal-600 text-white rounded-xl py-2.5 hover:bg-teal-700 transition">
                                 Create
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Send to Multiple Members Modal */}
+            {showSendModal && selectedWorkspaceForSend && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-fadeIn">
+                    <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl">
+                        <div className="flex justify-between items-center mb-4">
+                            <div>
+                                <h2 className="text-xl font-bold text-gray-900">Send Secure Message</h2>
+                                <p className="text-sm text-gray-500">Select recipients in {selectedWorkspaceForSend.name}</p>
+                            </div>
+                            <button onClick={() => setShowSendModal(false)} className="text-gray-400 hover:text-gray-600">
+                                <X size={20} />
+                            </button>
+                        </div>
+                        
+                        <div className="mb-4">
+                            <div className="flex justify-between items-center mb-2">
+                                <span className="text-sm text-gray-600">Select recipients:</span>
+                                <button
+                                    onClick={() => selectAllMembers(selectedWorkspaceForSend.members)}
+                                    className="text-xs text-teal-600 hover:text-teal-700"
+                                >
+                                    Select All
+                                </button>
+                            </div>
+                            <div className="space-y-2 max-h-60 overflow-y-auto border border-gray-200 rounded-xl p-3">
+                                {selectedWorkspaceForSend.members?.filter(m => m.user_id !== user?.id).map(member => (
+                                    <label key={member.id} className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded-lg cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedMembers.includes(member.user_id)}
+                                            onChange={() => toggleMemberSelection(member.user_id)}
+                                            className="w-4 h-4 text-teal-600 rounded border-gray-300 focus:ring-teal-500"
+                                        />
+                                        <div>
+                                            <p className="text-sm font-medium text-gray-900">{member.user?.name}</p>
+                                            <p className="text-xs text-gray-500">{member.user?.email}</p>
+                                        </div>
+                                    </label>
+                                ))}
+                                {selectedWorkspaceForSend.members?.filter(m => m.user_id !== user?.id).length === 0 && (
+                                    <p className="text-sm text-gray-400 text-center py-4">No other members to send to</p>
+                                )}
+                            </div>
+                        </div>
+                        
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => setShowSendModal(false)}
+                                className="flex-1 border border-gray-200 rounded-xl py-2.5 hover:bg-gray-50 transition"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={sendToSelectedMembers}
+                                disabled={selectedMembers.length === 0}
+                                className="flex-1 bg-teal-600 hover:bg-teal-700 text-white rounded-xl py-2.5 transition disabled:opacity-50"
+                            >
+                                Send to {selectedMembers.length} Recipient{selectedMembers.length !== 1 ? 's' : ''}
                             </button>
                         </div>
                     </div>

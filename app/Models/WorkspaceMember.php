@@ -9,7 +9,7 @@ class WorkspaceMember extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['workspace_id', 'user_id', 'role'];
+    protected $fillable = ['workspace_id', 'user_id', 'role', 'encrypted_workspace_private_key'];
 
     public function workspace()
     {

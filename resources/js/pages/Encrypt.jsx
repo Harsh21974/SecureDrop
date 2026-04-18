@@ -1,6 +1,6 @@
 import React, { useState } from "react";
-import { encryptWithPublicKey } from "../crypto/keys";
-import { Copy, UploadCloud, Lock, FileText, Eye, EyeOff, Shield, Mail, User, X } from "lucide-react";
+import { encryptForMultipleRecipients } from "../crypto/keys";
+import { Copy, UploadCloud, Lock, FileText, Shield, Mail, User, X, Plus } from "lucide-react";
 import api from "../../src/api";                             
 import { useAuth } from "../../src/contexts/AuthContext";
 
@@ -16,13 +16,12 @@ export default function Encrypt() {
     const [showDialog, setShowDialog] = useState(false);
     const [emailSent, setEmailSent] = useState(false);
     const [charCount, setCharCount] = useState(0);
-    const [recipientEmail, setRecipientEmail] = useState("");
-    const [recipientName, setRecipientName] = useState("");
-    const [recipientId, setRecipientId] = useState(null);
+    const [recipients, setRecipients] = useState([]);
+    const [emailInput, setEmailInput] = useState("");
     const [searchResults, setSearchResults] = useState([]);
     const [searching, setSearching] = useState(false);
     const [showResults, setShowResults] = useState(false);
-    const [recipientPublicKey, setRecipientPublicKey] = useState(null);
+    const [dialogRecipients, setDialogRecipients] = useState([]);
     
     const { user } = useAuth();
     const MAX_TEXT_LENGTH = 50000;
@@ -34,15 +33,12 @@ export default function Encrypt() {
         setFile(null);
         setExpiresIn(1440);
         setMaxViews(1);
-        setRecipientEmail("");
-        setRecipientName("");
-        setRecipientId(null);
-        setRecipientPublicKey(null);
-        setSearchResults([]);
+        setRecipients([]);
+        setEmailInput("");
     };
 
-    const searchRecipient = async (email) => {
-        if (email.length < 3) {
+    const searchRecipient = async (query) => {
+        if (query.length < 2) {
             setSearchResults([]);
             setShowResults(false);
             return;
@@ -50,9 +46,12 @@ export default function Encrypt() {
         
         setSearching(true);
         try {
-            const response = await api.get(`/users/search?query=${encodeURIComponent(email)}`);
-            setSearchResults(response.data);
-            setShowResults(response.data.length > 0);
+            const response = await api.get(`/users/search?query=${encodeURIComponent(query)}`);
+            const filtered = response.data.filter(
+                u => !recipients.some(r => r.id === u.id) && u.id !== user?.id
+            );
+            setSearchResults(filtered);
+            setShowResults(filtered.length > 0);
         } catch (err) {
             console.error("Search failed:", err);
             setSearchResults([]);
@@ -61,35 +60,59 @@ export default function Encrypt() {
         }
     };
 
-    const selectRecipient = (user) => {
-        setRecipientEmail(user.email);
-        setRecipientName(user.name);
-        setRecipientId(user.id);
-        setShowResults(false);
+    const addRecipient = (recipient) => {
+        if (!recipients.some(r => r.id === recipient.id)) {
+            setRecipients([...recipients, recipient]);
+        }
+        setEmailInput("");
         setSearchResults([]);
+        setShowResults(false);
     };
 
-    const clearRecipient = () => {
-        setRecipientEmail("");
-        setRecipientName("");
-        setRecipientId(null);
-        setRecipientPublicKey(null);
-    };
-
-    const fetchPublicKey = async (email) => {
+    const addRecipientByEmail = async () => {
+        if (!emailInput.trim()) return;
+        
+        if (emailInput === user?.email) {
+            alert("You cannot send a secure message to yourself");
+            setEmailInput("");
+            return;
+        }
+        
+        // Check if already added
+        if (recipients.some(r => r.email === emailInput)) {
+            alert("Recipient already added");
+            setEmailInput("");
+            return;
+        }
+        
         try {
-            const response = await api.get(`/keys/public?email=${encodeURIComponent(email)}`);
-            setRecipientPublicKey(response.data.public_key);
-            return response.data.public_key;
+            const response = await api.get(`/keys/public?email=${encodeURIComponent(emailInput)}`);
+            const newRecipient = {
+                id: response.data.user_id,
+                name: response.data.name,
+                email: response.data.email,
+            };
+            setRecipients([...recipients, newRecipient]);
+            setEmailInput("");
         } catch (err) {
-            throw new Error(err.response?.data?.message || "User does not have encryption keys");
+            alert(`User with email ${emailInput} not found or does not have encryption keys`);
+        }
+    };
+
+    const removeRecipient = (recipientId) => {
+        setRecipients(recipients.filter(r => r.id !== recipientId));
+    };
+
+    const handleKeyPress = (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            addRecipientByEmail();
         }
     };
 
     const handleEncrypt = async () => {
-        // Validation
-        if (!recipientEmail.trim()) {
-            return alert("Please enter recipient email address");
+        if (recipients.length === 0) {
+            return alert("Please add at least one recipient");
         }
         if (mode === "text" && !text) return alert("Text cannot be empty");
         if (mode === "text" && text.length > MAX_TEXT_LENGTH) {
@@ -112,29 +135,43 @@ export default function Encrypt() {
                 filename = file.name;
             }
 
-            // Fetch recipient's public key
-            const publicKey = await fetchPublicKey(recipientEmail);
+            // Fetch public keys for all recipients
+            const recipientsWithKeys = [];
+            for (const recipient of recipients) {
+                const keyResponse = await api.get(`/keys/public?email=${recipient.email}`);
+                recipientsWithKeys.push({
+                    user_id: recipient.id,
+                    email: recipient.email,
+                    publicKey: keyResponse.data.public_key,
+                });
+            }
             
-            // Encrypt with recipient's public key
-            const encryptResult = await encryptWithPublicKey(buffer, publicKey);
+            const encryptResult = await encryptForMultipleRecipients(buffer, recipientsWithKeys);
+            
+            const recipientsData = encryptResult.encryptedKeys.map(key => ({
+                email: key.email,
+                encrypted_key: key.encrypted_key,
+            }));
             
             const response = await api.post('/secure-items', {
                 type: mode,
-                encrypted_data: encryptResult.encrypted,
+                encrypted_data: encryptResult.encryptedData,
                 filename,
                 expires_in: expiresIn,
                 max_views: maxViews,
-                recipient_email: recipientEmail,
+                recipients: recipientsData,
                 encryption_type: "public_key",
             });
 
             const result = response.data;
 
             if (result.email_sent) {
+                setDialogRecipients([...recipients])
                 setEmailSent(true);
                 resetForm();
                 setTimeout(() => setEmailSent(false), 3000);
             } else {
+                setDialogRecipients([...recipients]);
                 setLink(result.link);
                 setShowDialog(true);
                 resetForm();
@@ -161,18 +198,10 @@ export default function Encrypt() {
         }
     };
 
-    const handleEmailChange = (e) => {
-        const email = e.target.value;
-        setRecipientEmail(email);
-        setRecipientPublicKey(null);
-        setRecipientName("");
-        setRecipientId(null);
-        searchRecipient(email);
-    };
-
     const handleDialogClose = () => {
         setShowDialog(false);
         setLink("");
+        setDialogRecipients([]);
     };
 
     return (
@@ -181,72 +210,60 @@ export default function Encrypt() {
 
             <div className="relative w-full max-w-xl sm:max-w-2xl lg:max-w-3xl mt-6 sm:mt-10">
                 <div className="bg-white shadow-2xl border border-slate-200 rounded-3xl p-6 sm:p-8 lg:p-10">
-                    {/* Title */}
                     <div className="text-center mb-8">
                         <div className="flex items-center justify-center gap-2 text-teal-700 mb-3">
                             <Shield size={20} />
-                            <span className="uppercase text-xs tracking-widest font-medium">Public Key Encryption</span>
+                            <span className="uppercase text-xs tracking-widest font-medium">Multi-Recipient Encryption</span>
                         </div>
                         <h1 className="text-2xl sm:text-3xl lg:text-4xl font-semibold text-gray-900">Encrypt & Share Securely</h1>
-                        <p className="text-gray-500 text-xs sm:text-sm mt-2">End-to-end encrypted with recipient's public key</p>
+                        <p className="text-gray-500 text-xs sm:text-sm mt-2">End-to-end encrypted with multiple recipients' public keys</p>
                     </div>
 
-                    {/* Recipient Email Input - MANDATORY */}
+                    {/* Recipients Input */}
                     <div className="mb-6">
                         <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Recipient Email <span className="text-red-500">*</span>
+                            Recipients <span className="text-red-500">*</span>
                         </label>
-                        <div className="relative">
-                            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                            <input
-                                type="email"
-                                required
-                                placeholder="recipient@example.com"
-                                value={recipientEmail}
-                                onChange={handleEmailChange}
-                                className="w-full border border-gray-200 focus:border-teal-500 focus:ring-2 focus:ring-teal-100 rounded-xl py-3 pl-10 pr-4 transition"
-                            />
+                        
+                        {/* Selected recipients tags */}
+                        {recipients.length > 0 && (
+                            <div className="flex flex-wrap gap-2 mb-3">
+                                {recipients.map(recipient => (
+                                    <div key={recipient.id} className="bg-teal-50 border border-teal-200 rounded-lg px-3 py-1.5 text-sm flex items-center gap-2">
+                                        <User size={14} className="text-teal-600" />
+                                        <span className="text-teal-700">{recipient.name} ({recipient.email})</span>
+                                        <button onClick={() => removeRecipient(recipient.id)} className="text-teal-500 hover:text-red-500">
+                                            <X size={14} />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                        
+                        {/* Email input with button */}
+                        <div className="flex gap-2">
+                            <div className="relative flex-1">
+                                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                                <input
+                                    type="email"
+                                    placeholder="Enter email address and press Enter or click Add"
+                                    value={emailInput}
+                                    onChange={(e) => setEmailInput(e.target.value)}
+                                    onKeyPress={handleKeyPress}
+                                    className="w-full border border-gray-200 focus:border-teal-500 focus:ring-2 focus:ring-teal-100 rounded-xl py-3 pl-10 pr-4 transition"
+                                />
+                            </div>
+                            <button
+                                onClick={addRecipientByEmail}
+                                className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-xl flex items-center gap-2"
+                            >
+                                <Plus size={18} />
+                                Add
+                            </button>
                         </div>
                         
-                        {/* Search Results */}
-                        {showResults && (
-                            <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-60 overflow-y-auto">
-                                {searching ? (
-                                    <div className="p-4 text-center text-gray-500">Searching...</div>
-                                ) : (
-                                    searchResults.map(user => (
-                                        <button
-                                            key={user.id}
-                                            onClick={() => selectRecipient(user)}
-                                            className="w-full text-left px-4 py-3 hover:bg-gray-50 transition flex items-center gap-3 border-b border-gray-100 last:border-0"
-                                        >
-                                            <div className="w-8 h-8 bg-teal-100 rounded-full flex items-center justify-center">
-                                                <User size={14} className="text-teal-600" />
-                                            </div>
-                                            <div>
-                                                <p className="font-medium text-gray-900 text-sm">{user.name}</p>
-                                                <p className="text-xs text-gray-500">{user.email}</p>
-                                            </div>
-                                        </button>
-                                    ))
-                                )}
-                            </div>
-                        )}
-                        
-                        {recipientName && (
-                            <div className="mt-2 flex items-center gap-2">
-                                <div className="bg-teal-50 border border-teal-200 rounded-lg px-3 py-1.5 text-sm flex items-center gap-2">
-                                    <User size={14} className="text-teal-600" />
-                                    <span className="text-teal-700">Encrypting for: {recipientName}</span>
-                                    <button onClick={clearRecipient} className="text-teal-500 hover:text-red-500">
-                                        <X size={14} />
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-                        
                         <p className="text-xs text-gray-500 mt-2">
-                            The message will be encrypted with the recipient's public key. Only they can decrypt it.
+                            Enter email addresses one by one. Each recipient must be a registered user with encryption keys.
                         </p>
                     </div>
 
@@ -303,7 +320,7 @@ export default function Encrypt() {
 
                     {/* Max Views */}
                     <div className="mb-6">
-                        <p className="text-xs text-gray-500 uppercase tracking-wide mb-3">Max Views</p>
+                        <p className="text-xs text-gray-500 uppercase tracking-wide mb-3">Max Views (per recipient)</p>
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                             {[{ label: "Read Once", value: 1 }, { label: "5 Views", value: 5 }, { label: "10 Views", value: 10 }, { label: "100 Views", value: 100 }].map((option) => (
                                 <button key={option.value} onClick={() => setMaxViews(option.value)} className={`p-3 rounded-xl border text-xs sm:text-sm font-medium transition ${
@@ -316,17 +333,29 @@ export default function Encrypt() {
                     <div className="flex items-start gap-2 text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-xl p-3 mb-4">
                         <Shield size={14} className="text-teal-600 mt-[2px]" />
                         <span>
-                            Encryption happens locally in your browser using the recipient's public key. 
-                            The encrypted data can only be decrypted by the recipient's private key.
+                            Your message is encrypted once with a random AES key. This key is then encrypted separately for each recipient using their public key.
                         </span>
                     </div>
 
-                    {/* Encrypt Button */}
-                    <button onClick={handleEncrypt} disabled={loading || !recipientEmail.trim()} className="w-full bg-teal-700 hover:bg-teal-800 text-white py-3 rounded-2xl font-semibold transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
-                        {loading ? <><Lock size={16} className="animate-pulse" /> Encrypting...</> : "Encrypt & Send to Recipient"}
+                    <button 
+                        onClick={handleEncrypt} 
+                        disabled={loading || recipients.length === 0} 
+                        className="w-full bg-teal-700 hover:bg-teal-800 text-white py-3 rounded-2xl font-semibold transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        {loading ? "Encrypting..." : `Encrypt & Send to ${recipients.length} Recipient${recipients.length !== 1 ? 's' : ''}`}
                     </button>
                 </div>
             </div>
+            {/* Full-screen Loading Overlay */}
+            {loading && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+                    <div className="bg-white rounded-2xl p-8 flex flex-col items-center gap-4 shadow-2xl">
+                        <div className="animate-spin rounded-full h-12 w-12 border-4 border-teal-600 border-t-transparent"></div>
+                        <p className="text-gray-700 font-medium">Encrypting your message...</p>
+                        <p className="text-sm text-gray-400">Please wait while we secure your content</p>
+                    </div>
+                </div>
+            )}
 
             {/* Link Dialog */}
             {showDialog && (
@@ -340,11 +369,10 @@ export default function Encrypt() {
                         </div>
                         <div className="mt-4 bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-gray-600">
                             <div className="flex items-center gap-2"><Shield size={12} className="text-teal-600" /> End-to-end encrypted</div>
-                            <div>📧 Sent to: {recipientEmail}</div>
+                            <div>📧 Sent to: {dialogRecipients.map(r => r.email).join(', ')}</div>
                             <div>⏱ Expires in {expiresIn === 60 ? "1 hour" : expiresIn === 720 ? "12 hours" : "24 hours"}</div>
-                            <div>👁 Max views: {maxViews}</div>
-                            <div className="text-red-500 font-medium">💣 Link self-destructs after the limit is reached</div>
-                            <div className="text-teal-600 mt-1">🔐 Encrypted with recipient's public key</div>
+                            <div>👁 Max views: {maxViews} per recipient</div>
+                            <div className="text-red-500 font-medium">💣 Link self-destructs after limit</div>
                         </div>
                         <button onClick={handleDialogClose} className="w-full mt-4 bg-gray-100 hover:bg-gray-200 py-2 rounded-xl">Close</button>
                     </div>
@@ -359,7 +387,7 @@ export default function Encrypt() {
                         <div className="text-center">
                             <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">📧</div>
                             <h2 className="text-xl font-semibold text-gray-900 mb-2">Link Sent Successfully!</h2>
-                            <p className="text-sm text-gray-600">The secure link has been sent to {recipientEmail}.</p>
+                            <p className="text-sm text-gray-600">The secure link has been sent to {dialogRecipients.length} recipient(s).</p>
                         </div>
                         <button onClick={() => setEmailSent(false)} className="w-full mt-6 bg-teal-600 text-white py-2 rounded-xl">Continue</button>
                     </div>

@@ -7,13 +7,11 @@ use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 
 class SecureItemController extends Controller
 {
-    // CREATE SECURE ITEM - Modified for public key encryption
     public function store(Request $request)
     {
         $request->validate([
@@ -22,67 +20,75 @@ class SecureItemController extends Controller
             'filename' => 'nullable|string',
             'expires_in' => 'nullable|integer|min:1|max:1440',
             'max_views' => 'nullable|integer|min:1|max:100',
-            'recipient_email' => 'nullable|email|exists:users,email',
-            'encryption_type' => 'required|in:password,public_key',
+            'recipients' => 'required|array|min:1',
+            'recipients.*.email' => 'required|email|exists:users,email',
+            'recipients.*.encrypted_key' => 'required|string',
+            'encryption_type' => 'required|in:public_key',
         ]);
 
-        // For password-based encryption (legacy support)
-        if ($request->encryption_type === 'password') {
-            $request->validate([
-                'password' => 'required|string|min:6',
-            ]);
+        $user = Auth::guard('sanctum')->user();
+        foreach ($request->recipients as $recipientData) {
+            if ($recipientData['email'] === $user->email) {
+                return response()->json(['message' => 'You cannot send a secure message to yourself'], 400);
+            }
         }
 
-        // Text length validation
         if ($request->type === 'text') {
             $decryptedData = base64_decode($request->encrypted_data);
             if (strlen($decryptedData) > 50000) {
-                return response()->json([
-                    'message' => 'Text exceeds 50,000 character limit'
-                ], 400);
+                return response()->json(['message' => 'Text exceeds 50,000 character limit'], 400);
             }
         }
 
         $expiresInMinutes = $request->expires_in ?? 1440;
-        $user = Auth::guard('sanctum')->user();
         
-        // Find recipient if public key encryption
-        $recipientId = null;
-        if ($request->encryption_type === 'public_key' && $request->recipient_email) {
-            $recipient = User::where('email', $request->recipient_email)->first();
-            if ($recipient && $recipient->public_key) {
-                $recipientId = $recipient->id;
-            } else {
-                return response()->json([
-                    'message' => 'Recipient does not have encryption keys set up'
-                ], 400);
+        DB::beginTransaction();
+        try {
+            // Build recipients data with encrypted keys
+            $recipientsData = [];
+            $encryptedAesKeys = [];
+            
+            foreach ($request->recipients as $recipientData) {
+                $recipient = User::where('email', $recipientData['email'])->first();
+                $recipientsData[] = $recipientData['email'];
+                $encryptedAesKeys[] = [
+                    'user_id' => $recipient->id,
+                    'email' => $recipient->email,
+                    'encrypted_key' => $recipientData['encrypted_key'],
+                    'max_views' => $request->max_views ?? 1,
+                    'view_count' => 0,  // ✅ Track per-recipient views
+                    'has_accessed' => false,
+                ];
             }
+            
+            $secureItem = SecureItem::create([
+                'type' => $request->type,
+                'encrypted_data' => $request->encrypted_data,
+                'encrypted_aes_keys' => json_encode($encryptedAesKeys),
+                'filename' => $request->filename,
+                'expires_at' => Carbon::now()->addMinutes($expiresInMinutes),
+                'max_views' => $request->max_views ?? 1,
+                'view_count' => 0,
+                'recipients' => $recipientsData,
+                'user_id' => $user ? $user->id : null,
+                'encryption_type' => $request->encryption_type,
+            ]);
+            
+            DB::commit();
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json(['message' => 'Failed to create secure item: ' . $e->getMessage()], 500);
         }
-
-        $secureItem = SecureItem::create([
-            'type' => $request->type,
-            'encrypted_data' => $request->encrypted_data,
-            'filename' => $request->filename,
-            'expires_at' => Carbon::now()->addMinutes($expiresInMinutes),
-            'max_views' => $request->max_views ?? 1,
-            'view_count' => 0,
-            'recipients' => $request->recipient_email ? [$request->recipient_email] : null,
-            //'password' => $request->encryption_type === 'password' ? Hash::make($request->password) : null,
-            'user_id' => $user ? $user->id : null,
-            'recipient_id' => $recipientId,
-            'encryption_type' => $request->encryption_type,
-        ]);
 
         $secureLink = url("/decrypt/{$secureItem->token}");
         $emailSent = false;
 
-        // Send email notification if recipient provided
-        if ($request->recipient_email) {
+        foreach ($request->recipients as $recipientData) {
             Mail::send('emails.secure-link', [
                 'sender_name' => $user ? $user->name : 'Someone',
                 'link' => $secureLink,
-            ], function ($message) use ($request) {
-                $message->to($request->recipient_email)
+            ], function ($message) use ($recipientData) {
+                $message->to($recipientData['email'])
                         ->subject('You received a secure message on SecureDrop');
             });
             $emailSent = true;
@@ -95,21 +101,16 @@ class SecureItemController extends Controller
         ]);
     }
 
-    // CHECK LINK (No changes)
     public function show($token)
     {
         $item = SecureItem::where('token', $token)->firstOrFail();
 
         if (now()->greaterThan($item->expires_at)) {
-            return response()->json([
-                'message' => 'Link has expired.'
-            ], 410);
+            return response()->json(['message' => 'Link has expired.'], 410);
         }
 
         if ($item->view_count >= $item->max_views) {
-            return response()->json([
-                'message' => 'View limit exceeded.'
-            ], 403);
+            return response()->json(['message' => 'View limit exceeded.'], 403);
         }
 
         return response()->json([
@@ -118,30 +119,60 @@ class SecureItemController extends Controller
         ]);
     }
 
-    // DECRYPT - Modified to handle both encryption types
-    public function decrypt($token)
+    public function decrypt(Request $request, $token)
     {
-        $item = SecureItem::where('token', $token)->first();
+        $item = SecureItem::where('token', $token)->firstOrFail();
 
-        if (!$item) {
-            return response()->json(['message' => 'Invalid link'], 404);
+        if (now()->greaterThan($item->expires_at)) {
+            return response()->json(['message' => 'Link expired'], 410);
         }
 
-        if ($item->expires_at < now()) {
-            return response()->json(['message' => 'Link expired'], 400);
+        $user = Auth::user();
+        
+        if (!$user) {
+            return response()->json(['message' => 'Please login to decrypt this message'], 401);
         }
-
-        if ($item->view_count >= $item->max_views) {
-            return response()->json(['message' => 'View limit exceeded'], 400);
+        
+        $encryptedAesKeys = json_decode($item->encrypted_aes_keys, true);
+        $userKeyData = null;
+        $userKeyIndex = null;
+        
+        foreach ($encryptedAesKeys as $index => $keyData) {
+            if ($keyData['user_id'] == $user->id || $keyData['email'] == $user->email) {
+                $userKeyData = $keyData;
+                $userKeyIndex = $index;
+                break;
+            }
         }
-
-        // Increment views
+        
+        if (!$userKeyData) {
+            return response()->json(['message' => 'You are not authorized to decrypt this message'], 403);
+        }
+        
+        // ✅ Check per-recipient view limit
+        $recipientViewCount = $userKeyData['view_count'] ?? 0;
+        $recipientMaxViews = $userKeyData['max_views'] ?? $item->max_views;
+        
+        if ($recipientViewCount >= $recipientMaxViews) {
+            return response()->json(['message' => 'Your view limit for this message has been exceeded'], 403);
+        }
+        
+        // ✅ Increment per-recipient view count
+        $userKeyData['view_count'] = $recipientViewCount + 1;
+        $userKeyData['has_accessed'] = true;
+        $encryptedAesKeys[$userKeyIndex] = $userKeyData;
+        $item->encrypted_aes_keys = json_encode($encryptedAesKeys);
+        $item->save();
+        
+        // Also increment global count for backward compatibility
         $item->increment('view_count');
 
         return response()->json([
-            'encrypted_data' => $item->encrypted_data,
             'type' => $item->type,
+            'encrypted_data' => $item->encrypted_data,
             'filename' => $item->filename,
+            'encryption_type' => $item->encryption_type,
+            'encrypted_aes_key' => $userKeyData['encrypted_key'],
         ]);
     }
 }

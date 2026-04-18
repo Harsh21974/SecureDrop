@@ -331,3 +331,116 @@ export async function importKeysFromFile(file, password) {
         reader.readAsText(file);
     });
 }
+// Generate random AES-256 key
+export async function generateAESKey() {
+    return await crypto.subtle.generateKey(
+        {
+            name: 'AES-GCM',
+            length: 256,
+        },
+        true,
+        ['encrypt', 'decrypt']
+    );
+}
+
+// Encrypt data with AES key
+export async function encryptWithAES(dataBuffer, aesKey) {
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    
+    const encrypted = await crypto.subtle.encrypt(
+        {
+            name: 'AES-GCM',
+            iv: iv,
+        },
+        aesKey,
+        dataBuffer
+    );
+    
+    const encryptedBytes = new Uint8Array(encrypted);
+    const result = new Uint8Array(iv.length + encryptedBytes.length);
+    result.set(iv, 0);
+    result.set(encryptedBytes, iv.length);
+    
+    return bufferToBase64(result);
+}
+
+// Decrypt data with AES key
+export async function decryptWithAES(encryptedDataBase64, aesKey) {
+    const encryptedBuffer = base64ToBuffer(encryptedDataBase64);
+    const encryptedBytes = new Uint8Array(encryptedBuffer);
+    
+    const iv = encryptedBytes.slice(0, 12);
+    const data = encryptedBytes.slice(12);
+    
+    const decrypted = await crypto.subtle.decrypt(
+        {
+            name: 'AES-GCM',
+            iv: iv,
+        },
+        aesKey,
+        data
+    );
+    
+    return decrypted;
+}
+
+// Encrypt AES key for a single recipient
+export async function encryptAESKeyForRecipient(aesKey, recipientPublicKeyPem) {
+    const recipientPublicKey = await importPublicKey(recipientPublicKeyPem);
+    const aesKeyRaw = await crypto.subtle.exportKey('raw', aesKey);
+    
+    const encryptedAESKey = await crypto.subtle.encrypt(
+        { name: 'RSA-OAEP' },
+        recipientPublicKey,
+        aesKeyRaw
+    );
+    
+    return bufferToBase64(encryptedAESKey);
+}
+
+// Decrypt AES key with user's private key
+export async function decryptAESKeyForRecipient(encryptedAESKeyBase64, userPrivateKeyPem) {
+    const userPrivateKey = await importPrivateKey(userPrivateKeyPem);
+    const encryptedAESKey = base64ToBuffer(encryptedAESKeyBase64);
+    
+    const aesKeyRaw = await crypto.subtle.decrypt(
+        { name: 'RSA-OAEP' },
+        userPrivateKey,
+        encryptedAESKey
+    );
+    
+    const aesKey = await crypto.subtle.importKey(
+        'raw',
+        aesKeyRaw,
+        { name: 'AES-GCM', length: 256 },
+        true,
+        ['encrypt', 'decrypt']
+    );
+    
+    return aesKey;
+}
+
+// Multi-recipient encryption
+export async function encryptForMultipleRecipients(dataBuffer, recipientsWithPublicKeys) {
+    // Generate random AES key
+    const aesKey = await generateAESKey();
+    
+    // Encrypt data with AES
+    const encryptedData = await encryptWithAES(dataBuffer, aesKey);
+    
+    // Encrypt AES key for each recipient
+    const encryptedKeys = [];
+    for (const recipient of recipientsWithPublicKeys) {
+        const encryptedKey = await encryptAESKeyForRecipient(aesKey, recipient.publicKey);
+        encryptedKeys.push({
+            user_id: recipient.user_id,
+            email: recipient.email,
+            encrypted_key: encryptedKey,
+        });
+    }
+    
+    return {
+        encryptedData: encryptedData,
+        encryptedKeys: encryptedKeys,
+    };
+}

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from "../../src/contexts/AuthContext";
 import api from "../../src/api";
-import { Copy, Trash2, FileText, File, Clock, Eye, Link as LinkIcon, LogOut, Sparkles, Users, ChevronRight, CheckCircle, AlertCircle } from 'lucide-react';
+import { Copy, Trash2, FileText, File, Clock, Eye, Link as LinkIcon, LogOut, Sparkles, Users, ChevronRight, CheckCircle, AlertCircle, Shield, Mail } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import PendingInvites from "./workspace/PendingInvites";
 
@@ -55,7 +55,7 @@ export default function Profile() {
         <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50/30 to-teal-50/40 py-8 px-4">
             <div className="max-w-6xl mx-auto space-y-6">
 
-                {/* Header Card with glassmorphism effect */}
+                {/* Header Card */}
                 <div className="relative overflow-hidden bg-white/80 backdrop-blur-sm rounded-3xl shadow-xl border border-white/50 p-6 flex flex-col sm:flex-row justify-between items-center gap-4 transition-all hover:shadow-2xl">
                     <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-teal-100/40 to-indigo-100/40 rounded-full blur-3xl -z-0"></div>
                     <div className="relative z-10">
@@ -69,7 +69,9 @@ export default function Profile() {
                                 <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
                                     {user?.name}
                                 </h1>
-                                <p className="text-sm text-gray-500">{user?.email}</p>
+                                <p className="text-sm text-gray-500 flex items-center gap-1">
+                                    <Mail size={12} /> {user?.email}
+                                </p>
                             </div>
                         </div>
                         <div className="mt-3 flex items-center gap-2 text-xs">
@@ -93,7 +95,7 @@ export default function Profile() {
                     </button>
                 </div>
 
-                {/* Invites */}
+                {/* Pending Invites */}
                 <PendingInvites />
 
                 {/* Workspaces Card */}
@@ -110,11 +112,11 @@ export default function Profile() {
                     </a>
                 </div>
 
-                {/* Items Section */}
+                {/* Secure Items Section */}
                 <div className="bg-white rounded-2xl shadow-md overflow-hidden border border-gray-100">
                     <div className="bg-gradient-to-r from-gray-50 to-white px-6 py-5 border-b border-gray-200">
                         <h2 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
-                            <LinkIcon size={22} className="text-teal-600" />
+                            <Shield size={22} className="text-teal-600" />
                             Your Secure Links
                         </h2>
                         <p className="text-sm text-gray-500 mt-1">Manage and share your encrypted secrets</p>
@@ -136,9 +138,11 @@ export default function Profile() {
                             </div>
                         ) : (
                             <div className="grid gap-4">
-                                {items.map((item, idx) => {
+                                {items.map((item) => {
                                     const status = getStatus(item);
                                     const StatusIcon = status.icon;
+                                    const isMultiRecipient = item.recipient_count > 1;
+                                    
                                     return (
                                         <div 
                                             key={item.token} 
@@ -155,15 +159,29 @@ export default function Profile() {
                                                             {item.type === 'text' ? 'Text Secret' : item.filename || 'File'}
                                                         </p>
 
-                                                        <div className="flex flex-wrap gap-3 text-xs text-gray-500 mt-2">
+                                                        <div className="flex flex-wrap gap-2 text-xs text-gray-500 mt-2">
                                                             <span className="flex items-center gap-1.5 bg-gray-50 px-2 py-1 rounded-full">
                                                                 <Clock size={12} className="text-gray-400" /> 
                                                                 {formatDistanceToNow(new Date(item.created_at), { addSuffix: true })}
                                                             </span>
+                                                            
+                                                            {/* ✅ Updated view display for per-recipient */}
                                                             <span className="flex items-center gap-1.5 bg-gray-50 px-2 py-1 rounded-full">
                                                                 <Eye size={12} className="text-gray-400" /> 
                                                                 {item.view_count}/{item.max_views} views
+                                                                {isMultiRecipient && (
+                                                                    <span className="text-teal-600 ml-1">(for you)</span>
+                                                                )}
                                                             </span>
+                                                            
+                                                            {/* ✅ Show recipient count for multi-recipient items */}
+                                                            {isMultiRecipient && (
+                                                                <span className="flex items-center gap-1.5 bg-indigo-50 text-indigo-600 px-2 py-1 rounded-full">
+                                                                    <Users size={12} />
+                                                                    {item.recipient_count} recipients
+                                                                </span>
+                                                            )}
+                                                            
                                                             <span className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full font-medium ${status.color}`}>
                                                                 <StatusIcon size={12} />
                                                                 {status.label}

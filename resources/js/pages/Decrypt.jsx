@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { decryptWithPrivateKey, decryptPrivateKeyWithPassword } from "../crypto/keys";
+import { decryptAESKeyForRecipient, decryptWithAES, decryptPrivateKeyWithPassword } from "../crypto/keys";
 import { Copy, Shield, Key, Download, FileText } from "lucide-react";
 import api from "../../src/api";
 import { useAuth } from "../../src/contexts/AuthContext";
@@ -8,7 +8,7 @@ import { useAuth } from "../../src/contexts/AuthContext";
 export default function Decrypt() {
     const { id } = useParams();
     const navigate = useNavigate();
-    const { user, isAuthenticated, loading: authLoading } = useAuth();
+    const { user, isAuthenticated } = useAuth();
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
     const [content, setContent] = useState(null);
@@ -46,7 +46,6 @@ export default function Decrypt() {
             setLoading(true);
             setError("");
 
-            // If not authenticated, we can't decrypt public-key encrypted messages
             if (!isAuthenticated) {
                 setError("Please login first to decrypt this message");
                 setTimeout(() => navigate('/login'), 2000);
@@ -74,16 +73,17 @@ export default function Decrypt() {
                 throw new Error("No private key found.");
             }
             
-            const privateKeyPem = await decryptPrivateKeyWithPassword(
+            const userPrivateKeyPem = await decryptPrivateKeyWithPassword(
                 keyResponse.data.encrypted_private_key,
                 loginPassword
             );
             
-            const decryptedBuffer = await decryptWithPrivateKey(
-                result.encrypted_data,
-                privateKeyPem,
-                result.encrypted_data.length > 500
+            const aesKey = await decryptAESKeyForRecipient(
+                result.encrypted_aes_key,
+                userPrivateKeyPem
             );
+            
+            const decryptedBuffer = await decryptWithAES(result.encrypted_data, aesKey);
             
             setShowPasswordPrompt(false);
             setLoginPassword("");
@@ -105,7 +105,6 @@ export default function Decrypt() {
     };
 
     const handleLoginRedirect = () => {
-        // Store current URL to redirect back after login
         localStorage.setItem('redirectAfterLogin', window.location.pathname);
         navigate('/login');
     };
@@ -238,7 +237,7 @@ export default function Decrypt() {
                 </div>
                 <h1 className="text-2xl font-bold text-gray-800 mb-2">Secure Message</h1>
                 <p className="text-gray-500 mb-6">
-                    This message was encrypted with your public key. Click below to decrypt it.
+                    This message was encrypted for you. Click below to decrypt it.
                 </p>
                 <button
                     onClick={() => setShowPasswordPrompt(true)}
