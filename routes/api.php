@@ -53,6 +53,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/keys', [KeyController::class, 'updateKeys']);
     Route::get('/users/search', [KeyController::class, 'searchUsers']);
 
+    Route::get('/users/{id}', [KeyController::class, 'getUserById']);
+
     // Workspace Messages
     Route::get('/workspaces/{workspaceId}/messages', [WorkspaceMessageController::class, 'index']);
     Route::post('/workspaces/{workspaceId}/messages', [WorkspaceMessageController::class, 'store']);

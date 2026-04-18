@@ -90,12 +90,18 @@ class KeyController extends Controller
     // Get user by ID
     public function getUserById($id)
     {
-        $user = User::findOrFail($id);
-        return response()->json([
-            'id' => $user->id,
-            'name' => $user->name,
-            'email' => $user->email,
-            'public_key' => $user->public_key,
-        ]);
+        try {
+            $user = User::findOrFail($id);
+            return response()->json([
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'public_key' => $user->public_key,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'User not found: ' . $e->getMessage()
+            ], 404);
+        }
     }
 }
