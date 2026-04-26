@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from "../../src/contexts/AuthContext";
 import { Lock, Mail, Eye, EyeOff } from 'lucide-react';
 
@@ -9,8 +9,12 @@ export default function Login() {
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
     const navigate = useNavigate();
+    const location = useLocation();
     const { login, user } = useAuth();
     const [showPassword, setShowPassword] = useState(false);
+
+    // Get the page user was trying to visit before login
+    const from = location.state?.from?.pathname || '/profile';
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -19,15 +23,13 @@ export default function Login() {
         
         try {
             const response = await login(email, password);
-            
-            // Get user from response or from context after login
             const loggedInUser = response?.user || user;
             
-            // Role-based redirect
             if (loggedInUser && loggedInUser.role === 'admin') {
                 navigate('/admin', { replace: true });
             } else {
-                navigate('/profile', { replace: true });
+                // Redirect to the page they were trying to access
+                navigate(from, { replace: true });
             }
         } catch (err) {
             console.error('Login error:', err);
@@ -36,7 +38,7 @@ export default function Login() {
             setLoading(false);
         }
     };
-
+    
     return (
         <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-teal-50 flex items-center justify-center px-4 py-12 sm:px-6 lg:px-8">
             <div className="w-full max-w-md">
@@ -76,7 +78,7 @@ export default function Login() {
                                     required
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
-                                    className="w-full border border-gray-200 focus:border-teal-500 focus:ring-2 focus:ring-teal-100 rounded-xl py-3 pl-10 pr-4 transition"
+                                    className="w-full border border-gray-200 focus:border-teal-500 focus:ring-2 focus:ring-teal-100 rounded-xl py-3 pl-10 pr-10 transition"
                                     placeholder="••••••••"
                                 />
                                 <button

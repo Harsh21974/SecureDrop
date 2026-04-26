@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import React, { useState } from "react";
 import { useAuth } from "../../src/contexts/AuthContext";
 import { User, LogOut, LayoutDashboard, Shield } from "lucide-react";
+import NotificationBell from '../../js/components/NotificationBell';
 
 export default function Header() {
     const { user, logout } = useAuth();
@@ -24,13 +25,15 @@ export default function Header() {
                 {/* Nav - Show different nav items for admin vs user */}
                 <nav className="hidden md:flex items-center gap-6 lg:gap-8 text-sm font-medium text-gray-600">
                     {!isAdmin ? (
-                        // Regular user navigation
                         <>
                             <Link to="/" className="hover:text-emerald-600 transition relative py-1">
                                 Home
                             </Link>
                             <Link to="/encrypt" className="hover:text-emerald-600 transition relative py-1">
                                 Encrypt Text
+                            </Link>
+                            <Link to="/workspaces" className="hover:text-emerald-600 transition relative py-1">
+                                Workspaces
                             </Link>
                             <Link to="/pricing" className="hover:text-emerald-600 transition relative py-1">
                                 Pricing
@@ -54,6 +57,7 @@ export default function Header() {
 
                 {/* Auth Buttons / User Menu */}
                 <div className="flex items-center gap-2 sm:gap-3">
+                    {user && <NotificationBell />}
                     {user ? (
                         <div className="relative">
                             <button

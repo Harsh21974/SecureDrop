@@ -14,14 +14,17 @@ class SecureItem extends Model
         'id',
         'type',
         'encrypted_data',
+        'encrypted_aes_keys',
         'filename',
         'expires_at',
         'max_views',
         'view_count',
         'recipients',
         'token',
-        'password',
+        //'password',
         'user_id',
+        'recipient_id',
+        'encryption_type',  
     ];
 
     public function user()
