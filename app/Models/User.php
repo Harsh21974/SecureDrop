@@ -53,6 +53,10 @@ class User extends Authenticatable
 
     public function hasKeyPair(): bool
     {
+        //admin users don't need key pairs, so we return true for them
+        if($this->role === 'admin') {
+            return true;
+        }
         return !empty($this->public_key) && !empty($this->encrypted_private_key);
     }
 }

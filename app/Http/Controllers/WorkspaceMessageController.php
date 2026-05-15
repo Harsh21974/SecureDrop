@@ -57,10 +57,23 @@ class WorkspaceMessageController extends Controller
             // Create secure item
             $expiresInMinutes = $request->expires_in ?? 1440;
             
+            // Build encrypted AES keys array
+            $encryptedAesKeys = [
+                [
+                    'user_id' => $recipient->id,
+                    'email' => $recipient->email,
+                    'encrypted_key' => $request->encrypted_data, // The data is already encrypted with recipient's key
+                    'max_views' => $request->max_views ?? 1,
+                    'view_count' => 0,
+                    'has_accessed' => false,
+                ]
+            ];
+
             $secureItem = SecureItem::create([
                 'id' => (string) Str::uuid(),
                 'type' => $request->type,
                 'encrypted_data' => $request->encrypted_data,
+                'encrypted_aes_keys' => json_encode($encryptedAesKeys), // ✅ ADD THIS
                 'filename' => $request->filename,
                 'expires_at' => Carbon::now()->addMinutes($expiresInMinutes),
                 'max_views' => $request->max_views ?? 1,

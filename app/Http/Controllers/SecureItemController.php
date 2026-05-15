@@ -151,6 +151,12 @@ class SecureItemController extends Controller
         }
         
         $encryptedAesKeys = json_decode($item->encrypted_aes_keys, true);
+        
+        // ✅ Add null check
+        if (!$encryptedAesKeys || !is_array($encryptedAesKeys)) {
+            return response()->json(['message' => 'Invalid encrypted data format'], 400);
+        }
+        
         $userKeyData = null;
         $userKeyIndex = null;
         
@@ -166,7 +172,7 @@ class SecureItemController extends Controller
             return response()->json(['message' => 'You are not authorized to decrypt this message'], 403);
         }
         
-        // ✅ Check per-recipient view limit
+        // ✅ Check per-recipient view limit - BEFORE incrementing
         $recipientViewCount = $userKeyData['view_count'] ?? 0;
         $recipientMaxViews = $userKeyData['max_views'] ?? $item->max_views;
         
@@ -174,22 +180,42 @@ class SecureItemController extends Controller
             return response()->json(['message' => 'Your view limit for this message has been exceeded'], 403);
         }
         
-        // ✅ Increment per-recipient view count
-        $userKeyData['view_count'] = $recipientViewCount + 1;
-        $userKeyData['has_accessed'] = true;
-        $encryptedAesKeys[$userKeyIndex] = $userKeyData;
-        $item->encrypted_aes_keys = json_encode($encryptedAesKeys);
-        $item->save();
+        // ✅ IMPORTANT FIX: Determine if this is a workspace message (direct RSA) or regular message (hybrid AES)
+        // Workspace messages have encrypted_data that is DIRECT RSA encrypted (no hybrid structure)
+        // Regular messages have encrypted_data that is hybrid (AES key + IV + encrypted data)
         
-        // Also increment global count for backward compatibility
-        $item->increment('view_count');
-
-        return response()->json([
-            'type' => $item->type,
-            'encrypted_data' => $item->encrypted_data,
-            'filename' => $item->filename,
-            'encryption_type' => $item->encryption_type,
-            'encrypted_aes_key' => $userKeyData['encrypted_key'],
-        ]);
+        // For workspace messages, the encrypted_data IS the encrypted AES key
+        // For regular messages, we need to send encrypted_aes_key separately
+        
+        // Check if this is a workspace message (has secure_item_id in workspace_messages)
+        $isWorkspaceMessage = \App\Models\WorkspaceMessage::where('secure_item_id', $item->id)->exists();
+        
+        if ($isWorkspaceMessage) {
+            // Workspace message: encrypted_data is directly the encrypted AES key
+            return response()->json([
+                'type' => $item->type,
+                'encrypted_data' => $item->encrypted_data,
+                'filename' => $item->filename,
+                'encryption_type' => $item->encryption_type,
+                'is_workspace_message' => true,
+            ]);
+        } else {
+            // Regular message: need to increment view count only now (before returning)
+            $userKeyData['view_count'] = $recipientViewCount + 1;
+            $userKeyData['has_accessed'] = true;
+            $encryptedAesKeys[$userKeyIndex] = $userKeyData;
+            $item->encrypted_aes_keys = json_encode($encryptedAesKeys);
+            $item->save();
+            
+            $item->increment('view_count');
+            
+            return response()->json([
+                'type' => $item->type,
+                'encrypted_data' => $item->encrypted_data,
+                'filename' => $item->filename,
+                'encryption_type' => $item->encryption_type,
+                'encrypted_aes_key' => $userKeyData['encrypted_key'],
+            ]);
+        }
     }
 }

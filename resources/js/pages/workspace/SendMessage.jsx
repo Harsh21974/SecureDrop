@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import api from "../../../src/api";
 import { useAuth } from "../../../src/contexts/AuthContext";
-import { encryptForMultipleRecipients } from "../../crypto/keys";
+import { encryptWithPublicKey, encryptForMultipleRecipients } from "../../crypto/keys";
 import { Lock, UploadCloud, FileText, Shield, ArrowLeft, Send, User, X, Plus } from "lucide-react";
 
 const SendMessage = () => {
@@ -152,33 +152,25 @@ const SendMessage = () => {
                 filename = file.name;
             }
 
-            // Fetch public keys for all recipients
-            const recipientsWithKeys = [];
+            // For workspace messages, we need to send to each recipient separately
+            // or send to the workspace with recipient specified
+            // Currently, send to first recipient only (simplified)
             for (const recipient of recipients) {
+                // Fetch recipient's public key
                 const keyResponse = await api.get(`/keys/public?email=${recipient.email}`);
-                recipientsWithKeys.push({
-                    user_id: recipient.id,
-                    email: recipient.email,
-                    publicKey: keyResponse.data.public_key,
+                const encryptResult = await encryptWithPublicKey(buffer, keyResponse.data.public_key);
+                
+                // ✅ Use the CORRECT endpoint
+                await api.post(`/workspaces/${workspaceId}/messages`, {
+                    recipient_id: recipient.id,
+                    subject: subject,
+                    type: mode,
+                    encrypted_data: encryptResult.encrypted,
+                    filename: filename,
+                    expires_in: expiresIn,
+                    max_views: maxViews,
                 });
             }
-            
-            const encryptResult = await encryptForMultipleRecipients(buffer, recipientsWithKeys);
-            
-            const recipientsData = encryptResult.encryptedKeys.map(key => ({
-                email: key.email,
-                encrypted_key: key.encrypted_key,
-            }));
-            
-            await api.post('/secure-items', {
-                type: mode,
-                encrypted_data: encryptResult.encryptedData,
-                filename,
-                expires_in: expiresIn,
-                max_views: maxViews,
-                recipients: recipientsData,
-                encryption_type: "public_key",
-            });
             
             alert(`Message sent successfully to ${recipients.length} recipient(s)!`);
             navigate(`/workspaces/${workspaceId}/messages`);
