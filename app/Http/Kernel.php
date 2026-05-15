@@ -34,7 +34,10 @@ class Kernel extends HttpKernel
 
     protected $routeMiddleware = [
         'auth' => \App\Http\Middleware\Authenticate::class,
+        'premium' => \App\Http\Middleware\CheckPremium::class,
         'admin' => \App\Http\Middleware\AdminMiddleware::class, // 👈 THIS IS CRITICAL
         'throttle' => \Illuminate\Routing\Middleware\ThrottleRequests::class,
+        'feature' => \App\Http\Middleware\CheckFeatureAccess::class,
     ];
+    
 }

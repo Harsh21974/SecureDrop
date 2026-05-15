@@ -20,7 +20,7 @@ class AdminUserSeeder extends Seeder
             [
                 'name' => 'Admin',
                 'email' => 'admin@securedrop.com',
-                'password' => Hash::make('password123'),
+                'password' => Hash::make('password@123'),
                 'role' => 'admin',
                 'is_premium' => true,
                 'email_verified_at' => now(),

@@ -14,6 +14,24 @@ use Illuminate\Support\Facades\Auth;
 class WorkspaceInviteController extends Controller
 {
     /**
+     * Check workspace member limit based on user's premium status
+     */
+    private function checkWorkspaceMemberLimit($workspaceId)
+    {
+        $user = Auth::user();
+        $currentMemberCount = WorkspaceMember::where('workspace_id', $workspaceId)->count();
+        $maxMembers = $user->getMaxWorkspaceMembers();
+        
+        if ($currentMemberCount >= $maxMembers && $maxMembers !== PHP_INT_MAX) {
+            return response()->json([
+                'message' => "Workspace member limit reached ({$maxMembers}). Premium users have unlimited members. Upgrade to premium to add more members."
+            ], 403);
+        }
+        
+        return null;
+    }
+
+    /**
      * Send workspace invitation to a user
      */
     public function sendInvite(Request $request)
@@ -24,6 +42,12 @@ class WorkspaceInviteController extends Controller
         ]);
 
         $workspace = Workspace::findOrFail($request->workspace_id);
+        
+        // ✅ PREMIUM CHECK: Check member limit before sending invite
+        $memberLimitCheck = $this->checkWorkspaceMemberLimit($workspace->id);
+        if ($memberLimitCheck) {
+            return $memberLimitCheck;
+        }
         
         // Check if current user has permission to invite
         $currentMember = WorkspaceMember::where('workspace_id', $workspace->id)
@@ -178,6 +202,13 @@ class WorkspaceInviteController extends Controller
             ], 400);
         }
 
+        // ✅ PREMIUM CHECK: Check member limit before accepting (for the workspace owner)
+        $workspace = Workspace::find($invite->workspace_id);
+        $memberLimitCheck = $this->checkWorkspaceMemberLimit($workspace->id);
+        if ($memberLimitCheck) {
+            return $memberLimitCheck;
+        }
+
         // Check if already a member
         $existingMember = WorkspaceMember::where('workspace_id', $invite->workspace_id)
             ->where('user_id', $user->id)
@@ -251,6 +282,7 @@ class WorkspaceInviteController extends Controller
         
         return response()->json(['message' => 'Invitation declined']);
     }
+    
     /**
      * Resend an expired invitation
      */
