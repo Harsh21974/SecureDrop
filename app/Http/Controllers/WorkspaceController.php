@@ -10,11 +10,55 @@ use Illuminate\Support\Facades\DB;
 
 class WorkspaceController extends Controller
 {
+    /**
+     * Check workspace member limit based on user's premium status
+     */
+    private function checkWorkspaceMemberLimit($workspaceId)
+    {
+        $user = Auth::user();
+        $currentMemberCount = WorkspaceMember::where('workspace_id', $workspaceId)->count();
+        $maxMembers = $user->getMaxWorkspaceMembers();
+        
+        if ($currentMemberCount >= $maxMembers && $maxMembers !== PHP_INT_MAX) {
+            return response()->json([
+                'message' => "Workspace member limit reached ({$maxMembers}). Premium users have unlimited members. Upgrade to premium to add more members."
+            ], 403);
+        }
+        
+        return null;
+    }
+
+    /**
+     * Check if user can create more workspaces
+     */
+    private function checkWorkspaceCreationLimit()
+    {
+        $user = Auth::user();
+        $workspaceCount = Workspace::where('owner_id', $user->id)->count();
+        
+        // Free users: max 3 workspaces, Premium users: unlimited
+        $maxWorkspaces = $user->isPremium() ? PHP_INT_MAX : 3;
+        
+        if ($workspaceCount >= $maxWorkspaces) {
+            return response()->json([
+                'message' => "You have reached your workspace limit ({$maxWorkspaces}). Premium users have unlimited workspaces. Upgrade to premium to create more workspaces."
+            ], 403);
+        }
+        
+        return null;
+    }
+
     public function store(Request $request)
     {
         $request->validate([
             'name' => 'required|string|max:255'
         ]);
+
+        // ✅ PREMIUM CHECK: Limit number of workspaces for free users
+        $creationLimitCheck = $this->checkWorkspaceCreationLimit();
+        if ($creationLimitCheck) {
+            return $creationLimitCheck;
+        }
 
         DB::beginTransaction();
         try {
@@ -37,7 +81,7 @@ class WorkspaceController extends Controller
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
-            return response()->json(['message' => 'Failed to create workspace'], 500);
+            return response()->json(['message' => 'Failed to create workspace: ' . $e->getMessage()], 500);
         }
     }
 

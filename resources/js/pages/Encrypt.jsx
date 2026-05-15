@@ -24,8 +24,12 @@ export default function Encrypt() {
     const [dialogRecipients, setDialogRecipients] = useState([]);
     
     const { user } = useAuth();
-    const MAX_TEXT_LENGTH = 50000;
-    const MAX_FILE_SIZE = 20 * 1024 * 1024;
+    const isPremium = user?.is_premium || false;
+    const MAX_TEXT_LENGTH = isPremium ? 50000 : 10000;
+    const MAX_FILE_SIZE = isPremium ? 50 * 1024 * 1024 : 20 * 1024 * 1024;
+    const MAX_RECIPIENTS = isPremium ? 20 : 1;
+    const MAX_EXPIRY_DAYS = isPremium ? 30 : 7;
+    const MAX_VIEWS = isPremium ? 100 : 10;
 
     const resetForm = () => {
         setText("");
@@ -61,12 +65,32 @@ export default function Encrypt() {
     };
 
     const addRecipient = (recipient) => {
+        if (recipients.length >= MAX_RECIPIENTS) {
+            alert(`You can only add ${MAX_RECIPIENTS} recipient(s). Free users: 1, Premium: Unlimited`);
+            return;
+        }
         if (!recipients.some(r => r.id === recipient.id)) {
             setRecipients([...recipients, recipient]);
         }
         setEmailInput("");
         setSearchResults([]);
         setShowResults(false);
+    };
+    const handleExpiryChange = (value) => {
+    if (value > MAX_EXPIRY_DAYS * 24 * 60) {
+        alert(`Expiry cannot exceed ${MAX_EXPIRY_DAYS} days. Premium users: 30 days, Free: 7 days`);
+        return;
+    }
+    setExpiresIn(value);
+};
+
+// Add max views validation
+    const handleMaxViewsChange = (value) => {
+        if (value > MAX_VIEWS) {
+            alert(`Max views cannot exceed ${MAX_VIEWS}. Premium users: 100, Free: 10`);
+            return;
+        }
+        setMaxViews(value);
     };
 
     const addRecipientByEmail = async () => {
@@ -218,7 +242,25 @@ export default function Encrypt() {
                         <h1 className="text-2xl sm:text-3xl lg:text-4xl font-semibold text-gray-900">Encrypt & Share Securely</h1>
                         <p className="text-gray-500 text-xs sm:text-sm mt-2">End-to-end encrypted with multiple recipients' public keys</p>
                     </div>
-
+                    {/* ✅ PREMIUM BANNER FOR FREE USERS */}
+                    {!isPremium && (
+                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6">
+                            <div className="flex items-start gap-3">
+                                <span className="text-amber-600 text-lg">⚠️</span>
+                                <div className="text-sm text-amber-800">
+                                    <p className="font-semibold">Free Plan Limits:</p>
+                                    <ul className="list-disc list-inside text-xs mt-1 space-y-1">
+                                        <li>5 messages per month</li>
+                                        <li>20MB file size limit</li>
+                                        <li>1 recipient per message</li>
+                                        <li>10 max views</li>
+                                        <li>7 days expiry</li>
+                                    </ul>
+                                    <a href="/pricing" className="font-semibold underline mt-2 inline-block">Upgrade to Premium →</a>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                     {/* Recipients Input */}
                     <div className="mb-6">
                         <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -306,7 +348,7 @@ export default function Encrypt() {
                         <label className="border-2 border-dashed border-gray-300 hover:border-teal-400 hover:bg-teal-50 rounded-2xl p-6 flex flex-col items-center justify-center cursor-pointer transition mb-6">
                             <UploadCloud size={40} className="text-emerald-500" />
                             <span className="mt-3">{file ? file.name : "Click to upload secure file"}</span>
-                            <span className="text-xs text-gray-400 mt-1">Max file size: 20MB</span>
+                            <span className="text-xs text-gray-400 mt-1">Max file size: {isPremium ? '50MB' : '20MB'}</span>
                             <input type="file" className="hidden" onChange={(e) => setFile(e.target.files[0])} />
                         </label>
                     )}
