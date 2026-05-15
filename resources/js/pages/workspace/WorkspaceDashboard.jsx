@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import api from "../../../src/api";
 import { useAuth } from "../../../src/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
-import { Plus, Users, Crown, Mail, X, Trash2, UserMinus, Check, AlertCircle, Send, MessageSquare } from "lucide-react";
+import { Plus, Users, Crown, Mail, X, Trash2, UserMinus, Check, AlertCircle, Send, MessageSquare, Loader2 } from "lucide-react";
 
 const WorkspaceDashboard = () => {
     const navigate = useNavigate();
@@ -18,6 +18,7 @@ const WorkspaceDashboard = () => {
     const [showSendModal, setShowSendModal] = useState(false);
     const [selectedWorkspaceForSend, setSelectedWorkspaceForSend] = useState(null);
     const [selectedMembers, setSelectedMembers] = useState([]);
+    const [inviteSendingForWorkspace, setInviteSendingForWorkspace] = useState(null);
 
     useEffect(() => {
         fetchWorkspaces();
@@ -53,6 +54,7 @@ const WorkspaceDashboard = () => {
             return;
         }
 
+        setInviteSendingForWorkspace(workspaceId);
         setSendingInvite(true);
         
         try {
@@ -76,6 +78,7 @@ const WorkspaceDashboard = () => {
             setTimeout(() => setInviteStatus({}), 3000);
         } finally {
             setSendingInvite(false);
+            setInviteSendingForWorkspace(null);
         }
     };
 
@@ -272,17 +275,27 @@ const WorkspaceDashboard = () => {
                                                         placeholder="colleague@company.com"
                                                         value={inviteEmail}
                                                         onChange={(e) => setInviteEmail(e.target.value)}
-                                                        className="flex-1 border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                                                        disabled={sendingInvite && inviteSendingForWorkspace === workspace.id}
+                                                        className="flex-1 border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
                                                         onKeyPress={(e) => e.key === 'Enter' && sendInvite(workspace.id)}
                                                         autoFocus
                                                     />
                                                     <button
                                                         onClick={() => sendInvite(workspace.id)}
                                                         disabled={sendingInvite}
-                                                        className="bg-teal-600 hover:bg-teal-700 text-white px-5 py-2.5 rounded-xl text-sm flex items-center gap-2 transition disabled:opacity-50"
+                                                        className="bg-teal-600 hover:bg-teal-700 text-white px-5 py-2.5 rounded-xl text-sm flex items-center gap-2 transition disabled:opacity-50 disabled:cursor-not-allowed"
                                                     >
-                                                        <Send size={16} />
-                                                        Send
+                                                        {sendingInvite ? (
+                                                            <>
+                                                                <Loader2 size={16} className="animate-spin" />
+                                                                Sending...
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <Send size={16} />
+                                                                Send
+                                                            </>
+                                                        )}
                                                     </button>
                                                 </div>
                                                 

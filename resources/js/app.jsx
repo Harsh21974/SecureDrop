@@ -38,7 +38,11 @@ function App() {
                         <Route element={<Layout />}>
                             <Route path="/" element={<Home />} />
                             <Route path="/encrypt" element={<Encrypt />} />
-                            <Route path="/decrypt/:id" element={<Decrypt />} />
+                            <Route path="/decrypt/:id" element={
+                                <ProtectedRoute>
+                                    <Decrypt />
+                                </ProtectedRoute>
+                            } />
                             <Route path="/pricing" element={<Pricing />} />
                             <Route path="/subscription" element={
                                 <ProtectedRoute>

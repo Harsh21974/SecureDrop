@@ -17,6 +17,7 @@ export default function Decrypt() {
     const [loginPassword, setLoginPassword] = useState("");
     const [itemDetails, setItemDetails] = useState(null);
 
+
     useEffect(() => {
         checkLink();
     }, [id]);

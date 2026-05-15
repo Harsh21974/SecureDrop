@@ -19,6 +19,12 @@ class WorkspaceInviteController extends Controller
     private function checkWorkspaceMemberLimit($workspaceId)
     {
         $user = Auth::user();
+        
+        // ✅ If no authenticated user, skip the check (will be caught by authentication middleware)
+        if (!$user) {
+            return null;
+        }
+        
         $currentMemberCount = WorkspaceMember::where('workspace_id', $workspaceId)->count();
         $maxMembers = $user->getMaxWorkspaceMembers();
         
@@ -30,7 +36,6 @@ class WorkspaceInviteController extends Controller
         
         return null;
     }
-
     /**
      * Send workspace invitation to a user
      */
@@ -189,11 +194,9 @@ class WorkspaceInviteController extends Controller
             ], 410);
         }
 
-        // Get or create user
         $user = User::where('email', $invite->email)->first();
         
         if (!$user) {
-            // User needs to register first
             return response()->json([
                 'message' => 'Please register an account with this email address first',
                 'requires_registration' => true,
@@ -202,11 +205,20 @@ class WorkspaceInviteController extends Controller
             ], 400);
         }
 
-        // ✅ PREMIUM CHECK: Check member limit before accepting (for the workspace owner)
+        // ✅ Fix: Check member limit based on WORKSPACE OWNER's premium status, not the accepting user
         $workspace = Workspace::find($invite->workspace_id);
-        $memberLimitCheck = $this->checkWorkspaceMemberLimit($workspace->id);
-        if ($memberLimitCheck) {
-            return $memberLimitCheck;
+        $workspaceOwner = User::find($workspace->owner_id);
+        
+        // ✅ Only check limit if workspace owner exists
+        if ($workspaceOwner) {
+            $currentMemberCount = WorkspaceMember::where('workspace_id', $workspace->id)->count();
+            $maxMembers = $workspaceOwner->getMaxWorkspaceMembers();
+            
+            if ($currentMemberCount >= $maxMembers && $maxMembers !== PHP_INT_MAX) {
+                return response()->json([
+                    'message' => "This workspace has reached its member limit. The workspace owner needs to upgrade to premium to add more members."
+                ], 403);
+            }
         }
 
         // Check if already a member
@@ -229,7 +241,6 @@ class WorkspaceInviteController extends Controller
             'role' => 'member'
         ]);
 
-        // Update invite status
         $invite->update(['status' => 'accepted']);
 
         return response()->json([

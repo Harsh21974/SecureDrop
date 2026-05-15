@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { encryptForMultipleRecipients } from "../crypto/keys";
 import { Copy, UploadCloud, Lock, FileText, Shield, Mail, User, X, Plus } from "lucide-react";
 import api from "../../src/api";                             
@@ -21,6 +21,7 @@ export default function Encrypt() {
     const [searchResults, setSearchResults] = useState([]);
     const [searching, setSearching] = useState(false);
     const [showResults, setShowResults] = useState(false);
+    const [errorMessage, setErrorMessage] = useState("");
     const [dialogRecipients, setDialogRecipients] = useState([]);
     
     const { user } = useAuth();
@@ -66,7 +67,7 @@ export default function Encrypt() {
 
     const addRecipient = (recipient) => {
         if (recipients.length >= MAX_RECIPIENTS) {
-            alert(`You can only add ${MAX_RECIPIENTS} recipient(s). Free users: 1, Premium: Unlimited`);
+            setErrorMessage(`You can only add ${MAX_RECIPIENTS} recipient(s). Free users: 1, Premium: Unlimited`);
             return;
         }
         if (!recipients.some(r => r.id === recipient.id)) {
@@ -76,9 +77,15 @@ export default function Encrypt() {
         setSearchResults([]);
         setShowResults(false);
     };
+
+    const clearError = () => {
+        setErrorMessage("");
+    };
+    
     const handleExpiryChange = (value) => {
+        clearError();
     if (value > MAX_EXPIRY_DAYS * 24 * 60) {
-        alert(`Expiry cannot exceed ${MAX_EXPIRY_DAYS} days. Premium users: 30 days, Free: 7 days`);
+        setErrorMessage(`Expiry cannot exceed ${MAX_EXPIRY_DAYS} days. Premium users: 30 days, Free: 7 days`);
         return;
     }
     setExpiresIn(value);
@@ -86,8 +93,9 @@ export default function Encrypt() {
 
 // Add max views validation
     const handleMaxViewsChange = (value) => {
+        clearError();
         if (value > MAX_VIEWS) {
-            alert(`Max views cannot exceed ${MAX_VIEWS}. Premium users: 100, Free: 10`);
+            setErrorMessage(`Max views cannot exceed ${MAX_VIEWS}. Premium users: 100, Free: 10`);
             return;
         }
         setMaxViews(value);
@@ -97,14 +105,14 @@ export default function Encrypt() {
         if (!emailInput.trim()) return;
         
         if (emailInput === user?.email) {
-            alert("You cannot send a secure message to yourself");
+            setErrorMessage("You cannot send a secure message to yourself");
             setEmailInput("");
             return;
         }
         
         // Check if already added
         if (recipients.some(r => r.email === emailInput)) {
-            alert("Recipient already added");
+            setErrorMessage("Recipient already added");
             setEmailInput("");
             return;
         }
@@ -119,7 +127,7 @@ export default function Encrypt() {
             setRecipients([...recipients, newRecipient]);
             setEmailInput("");
         } catch (err) {
-            alert(`User with email ${emailInput} not found or does not have encryption keys`);
+            setErrorMessage(`User with email ${emailInput} not found or does not have encryption keys`);
         }
     };
 
@@ -136,13 +144,13 @@ export default function Encrypt() {
 
     const handleEncrypt = async () => {
         if (recipients.length === 0) {
-            return alert("Please add at least one recipient");
+            return setErrorMessage("Please add at least one recipient");
         }
-        if (mode === "text" && !text) return alert("Text cannot be empty");
+        if (mode === "text" && !text) return setErrorMessage("Text cannot be empty");
         if (mode === "text" && text.length > MAX_TEXT_LENGTH) {
-            return alert(`Text exceeds ${MAX_TEXT_LENGTH.toLocaleString()} character limit`);
+            return setErrorMessage(`Text exceeds ${MAX_TEXT_LENGTH.toLocaleString()} character limit`);
         }
-        if (mode === "file" && !file) return alert("Select a file");
+        if (mode === "file" && !file) return setErrorMessage("Select a file");
 
         try {
             setLoading(true);
@@ -154,7 +162,7 @@ export default function Encrypt() {
             if (mode === "text") {
                 buffer = new TextEncoder().encode(text);
             } else {
-                if (file.size > MAX_FILE_SIZE) return alert("File exceeds 20MB limit");
+                if (file.size > MAX_FILE_SIZE) return setErrorMessage("File exceeds 20MB limit");
                 buffer = await file.arrayBuffer();
                 filename = file.name;
             }
@@ -202,7 +210,7 @@ export default function Encrypt() {
             }
         } catch (err) {
             const message = err.response?.data?.message || err.message || 'An error occurred';
-            alert(message);
+            setErrorMessage(message);
         } finally {
             setLoading(false);
         }
@@ -219,7 +227,41 @@ export default function Encrypt() {
         if (newText.length <= MAX_TEXT_LENGTH) {
             setText(newText);
             setCharCount(newText.length);
+            clearError();
         }
+    };
+
+    const ErrorMessage = ({ message, onClose }) => {
+        useEffect(() => {
+            if (message) {
+                const timer = setTimeout(() => {
+                    onClose();
+                }, 5000);
+                return () => clearTimeout(timer);
+            }
+        }, [message]);
+        if (!message) return null;
+        return (
+            <div className="fixed bottom-4 right-4 z-50 animate-slide-in">
+                <div className="bg-red-50 border-l-4 border-red-500 rounded-lg shadow-lg p-4 max-w-sm">
+                    <div className="flex items-start gap-3">
+                        <div className="flex-shrink-0">
+                            <svg className="h-5 w-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                        </div>
+                        <div className="flex-1">
+                            <p className="text-sm text-red-700">{message}</p>
+                        </div>
+                        <button onClick={onClose} className="flex-shrink-0 text-red-400 hover:text-red-600">
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
     };
 
     const handleDialogClose = () => {
@@ -290,7 +332,10 @@ export default function Encrypt() {
                                     type="email"
                                     placeholder="Enter email address and press Enter or click Add"
                                     value={emailInput}
-                                    onChange={(e) => setEmailInput(e.target.value)}
+                                    onChange={(e) => {
+                                        setEmailInput(e.target.value);
+                                        clearError(); // ✅ Clear error when user types
+                                    }}
                                     onKeyPress={handleKeyPress}
                                     className="w-full border border-gray-200 focus:border-teal-500 focus:ring-2 focus:ring-teal-100 rounded-xl py-3 pl-10 pr-4 transition"
                                 />
@@ -314,7 +359,10 @@ export default function Encrypt() {
                         {["text", "file"].map((type) => (
                             <button
                                 key={type}
-                                onClick={() => setMode(type)}
+                                onClick={() => {
+                                    setMode(type);
+                                    clearError(); // ✅ Clear error when switching modes
+                                }}
                                 className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-xl transition ${
                                     mode === type ? "bg-white shadow-md text-teal-700 font-semibold" : "text-gray-500"
                                 }`}
@@ -435,6 +483,9 @@ export default function Encrypt() {
                     </div>
                 </div>
             )}
+
+            {/* Error Message Toast */}
+            <ErrorMessage message={errorMessage} onClose={() => setErrorMessage("")} />
         </div>
     );
 }
