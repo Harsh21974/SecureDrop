@@ -65,6 +65,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // ✅ MOVED DECRYPT ROUTE INSIDE AUTH GROUP
     Route::post('/decrypt/{token}', [SecureItemController::class, 'decrypt']);
+    Route::post('/secure-items/{token}/confirm-view', [SecureItemController::class, 'confirmView']);
 
     Route::get('/notifications', [NotificationController::class, 'index']);
     Route::get('/notifications/unread-count', [NotificationController::class, 'unreadCount']);

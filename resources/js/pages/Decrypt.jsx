@@ -99,6 +99,15 @@ export default function Decrypt() {
                 );
                 decryptedBuffer = await decryptWithAES(result.encrypted_data, aesKey);
             }
+            // ✅ Confirm successful view ONLY after successful decryption
+            await fetch(`/api/secure-items/${id}/confirm-view`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Accept: "application/json",
+                    Authorization: `Bearer ${localStorage.getItem('token')}`
+                }
+            });
             
             setShowPasswordPrompt(false);
             setLoginPassword("");

@@ -181,12 +181,13 @@ class SecureItemController extends Controller
     {
         $item = SecureItem::where('token', $token)->firstOrFail();
 
-        if (now()->greaterThan($item->expires_at)) {
-            return response()->json(['message' => 'Link has expired.'], 410);
-        }
+        // Only check expiration here
+        // Recipient-specific view validation happens in decrypt()
 
-        if ($item->view_count >= $item->max_views) {
-            return response()->json(['message' => 'View limit exceeded.'], 403);
+        if (now()->greaterThan($item->expires_at)) {
+            return response()->json([
+                'message' => 'Link has expired.'
+            ], 410);
         }
 
         return response()->json([
@@ -237,16 +238,6 @@ class SecureItemController extends Controller
             return response()->json(['message' => 'Your view limit for this message has been exceeded'], 403);
         }
         
-        // ✅ INCREMENT VIEW COUNT FOR ALL MESSAGES (both workspace and regular)
-        $userKeyData['view_count'] = $recipientViewCount + 1;
-        $userKeyData['has_accessed'] = true;
-        $encryptedAesKeys[$userKeyIndex] = $userKeyData;
-        $item->encrypted_aes_keys = json_encode($encryptedAesKeys);
-        $item->save();
-        
-        // Also increment global count
-        $item->increment('view_count');
-        
         // Check if this is a workspace message (for response format only)
         $isWorkspaceMessage = \App\Models\WorkspaceMessage::where('secure_item_id', $item->id)->exists();
         
@@ -272,4 +263,101 @@ class SecureItemController extends Controller
             ]);
         }
     }
+
+    public function confirmView(Request $request, $token)
+{
+    DB::beginTransaction();
+
+    try {
+        $item = SecureItem::lockForUpdate()
+            ->where('token', $token)
+            ->firstOrFail();
+
+        if (now()->greaterThan($item->expires_at)) {
+            DB::rollBack();
+            return response()->json([
+                'message' => 'Link expired'
+            ], 410);
+        }
+
+        $user = Auth::user();
+
+        if (!$user) {
+            DB::rollBack();
+            return response()->json([
+                'message' => 'Unauthorized'
+            ], 401);
+        }
+
+        $encryptedAesKeys = json_decode($item->encrypted_aes_keys, true);
+
+        if (!$encryptedAesKeys || !is_array($encryptedAesKeys)) {
+            DB::rollBack();
+            return response()->json([
+                'message' => 'Invalid encrypted data format'
+            ], 400);
+        }
+
+        $userKeyIndex = null;
+        $userKeyData = null;
+
+        foreach ($encryptedAesKeys as $index => $keyData) {
+            if (
+                $keyData['user_id'] == $user->id ||
+                $keyData['email'] == $user->email
+            ) {
+                $userKeyIndex = $index;
+                $userKeyData = $keyData;
+                break;
+            }
+        }
+
+        if (!$userKeyData) {
+            DB::rollBack();
+            return response()->json([
+                'message' => 'Unauthorized access'
+            ], 403);
+        }
+
+        $recipientViewCount = $userKeyData['view_count'] ?? 0;
+        $recipientMaxViews = $userKeyData['max_views'] ?? $item->max_views;
+
+        if ($recipientViewCount >= $recipientMaxViews) {
+            DB::rollBack();
+            return response()->json([
+                'message' => 'View limit exceeded'
+            ], 403);
+        }
+
+        // Increment recipient-specific count
+        $userKeyData['view_count'] = $recipientViewCount + 1;
+        $userKeyData['has_accessed'] = true;
+
+        $encryptedAesKeys[$userKeyIndex] = $userKeyData;
+
+        $item->encrypted_aes_keys = json_encode($encryptedAesKeys);
+
+        // Optional global analytics counter
+        $item->view_count = $item->view_count + 1;
+
+        $item->save();
+
+        DB::commit();
+
+        return response()->json([
+            'success' => true,
+            'view_count' => $userKeyData['view_count'],
+            'max_views' => $recipientMaxViews,
+        ]);
+
+    } catch (\Exception $e) {
+
+        DB::rollBack();
+
+        return response()->json([
+            'message' => 'Failed to confirm view',
+            'error' => $e->getMessage()
+        ], 500);
+    }
+}
 }

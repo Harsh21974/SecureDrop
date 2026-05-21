@@ -15,20 +15,10 @@ class UserItemController extends Controller
         $items = $user->secureItems()
             ->orderBy('created_at', 'desc')
             ->get()
-            ->map(function($item) use ($user) {
-                // Get user's specific data from encrypted_aes_keys
+            ->map(function($item) {
+
                 $encryptedAesKeys = json_decode($item->encrypted_aes_keys, true);
-                $userViewData = null;
-                
-                if ($encryptedAesKeys) {
-                    foreach ($encryptedAesKeys as $keyData) {
-                        if ($keyData['user_id'] == $user->id || $keyData['email'] == $user->email) {
-                            $userViewData = $keyData;
-                            break;
-                        }
-                    }
-                }
-                
+
                 return [
                     'id' => $item->id,
                     'token' => $item->token,
@@ -36,12 +26,14 @@ class UserItemController extends Controller
                     'filename' => $item->filename,
                     'created_at' => $item->created_at,
                     'expires_at' => $item->expires_at,
-                    'max_views' => $userViewData['max_views'] ?? $item->max_views,
-                    'view_count' => $userViewData['view_count'] ?? 0,
+
+                    // Sender dashboard should use GLOBAL counts
+                    'max_views' => $item->max_views,
+                    'view_count' => $item->view_count,
+
                     'recipient_count' => $encryptedAesKeys ? count($encryptedAesKeys) : 1,
                 ];
             });
-        
         return response()->json($items);
     }
 
