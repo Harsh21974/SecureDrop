@@ -26,8 +26,7 @@ export default function Pricing() {
         { free: '20MB', premium: '50MB', text: 'File size limit' },
         { free: '3 members', premium: 'Unlimited', text: 'Workspace members' },
         { free: '1 recipient', premium: 'Unlimited', text: 'Recipients per message' },
-        { free: '7 days', premium: '30 days', text: 'Maximum expiry' },
-        { free: 'Community', premium: 'Priority 24/7', text: 'Support' },
+        { free: '24 Hours', premium: '24 Hours', text: 'Maximum expiry' }
     ];
 
     const handleSubscribe = async () => {

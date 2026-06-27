@@ -295,8 +295,7 @@ export default function Encrypt() {
                                         <li>5 messages per month</li>
                                         <li>20MB file size limit</li>
                                         <li>1 recipient per message</li>
-                                        <li>10 max views</li>
-                                        <li>7 days expiry</li>
+                                        <li>100 max views</li>
                                     </ul>
                                     <a href="/pricing" className="font-semibold underline mt-2 inline-block">Upgrade to Premium →</a>
                                 </div>
@@ -379,7 +378,7 @@ export default function Encrypt() {
                             <textarea
                                 rows={6}
                                 className="w-full resize-none min-h-[120px] border border-gray-200 focus:border-teal-500 focus:ring-2 focus:ring-teal-100 rounded-2xl p-4 mb-2 bg-white"
-                                placeholder="Enter your secret message... (Max 50,000 characters)"
+                                placeholder="Enter your secret message..."
                                 value={text}
                                 onChange={handleTextChange}
                             />
