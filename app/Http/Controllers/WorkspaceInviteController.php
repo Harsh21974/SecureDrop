@@ -14,6 +14,29 @@ use Illuminate\Support\Facades\Auth;
 class WorkspaceInviteController extends Controller
 {
     /**
+     * Check workspace member limit based on user's premium status
+     */
+    private function checkWorkspaceMemberLimit($workspaceId)
+    {
+        $user = Auth::user();
+        
+        // ✅ If no authenticated user, skip the check (will be caught by authentication middleware)
+        if (!$user) {
+            return null;
+        }
+        
+        $currentMemberCount = WorkspaceMember::where('workspace_id', $workspaceId)->count();
+        $maxMembers = $user->getMaxWorkspaceMembers();
+        
+        if ($currentMemberCount >= $maxMembers && $maxMembers !== PHP_INT_MAX) {
+            return response()->json([
+                'message' => "Workspace member limit reached ({$maxMembers}). Premium users have unlimited members. Upgrade to premium to add more members."
+            ], 403);
+        }
+        
+        return null;
+    }
+    /**
      * Send workspace invitation to a user
      */
     public function sendInvite(Request $request)
@@ -24,6 +47,12 @@ class WorkspaceInviteController extends Controller
         ]);
 
         $workspace = Workspace::findOrFail($request->workspace_id);
+        
+        // ✅ PREMIUM CHECK: Check member limit before sending invite
+        $memberLimitCheck = $this->checkWorkspaceMemberLimit($workspace->id);
+        if ($memberLimitCheck) {
+            return $memberLimitCheck;
+        }
         
         // Check if current user has permission to invite
         $currentMember = WorkspaceMember::where('workspace_id', $workspace->id)
@@ -165,17 +194,31 @@ class WorkspaceInviteController extends Controller
             ], 410);
         }
 
-        // Get or create user
         $user = User::where('email', $invite->email)->first();
         
         if (!$user) {
-            // User needs to register first
             return response()->json([
                 'message' => 'Please register an account with this email address first',
                 'requires_registration' => true,
                 'email' => $invite->email,
                 'invite_token' => $token
             ], 400);
+        }
+
+        // ✅ Fix: Check member limit based on WORKSPACE OWNER's premium status, not the accepting user
+        $workspace = Workspace::find($invite->workspace_id);
+        $workspaceOwner = User::find($workspace->owner_id);
+        
+        // ✅ Only check limit if workspace owner exists
+        if ($workspaceOwner) {
+            $currentMemberCount = WorkspaceMember::where('workspace_id', $workspace->id)->count();
+            $maxMembers = $workspaceOwner->getMaxWorkspaceMembers();
+            
+            if ($currentMemberCount >= $maxMembers && $maxMembers !== PHP_INT_MAX) {
+                return response()->json([
+                    'message' => "This workspace has reached its member limit. The workspace owner needs to upgrade to premium to add more members."
+                ], 403);
+            }
         }
 
         // Check if already a member
@@ -198,7 +241,6 @@ class WorkspaceInviteController extends Controller
             'role' => 'member'
         ]);
 
-        // Update invite status
         $invite->update(['status' => 'accepted']);
 
         return response()->json([
@@ -251,6 +293,7 @@ class WorkspaceInviteController extends Controller
         
         return response()->json(['message' => 'Invitation declined']);
     }
+    
     /**
      * Resend an expired invitation
      */

@@ -76,6 +76,9 @@ class AuthController extends Controller
     // Get authenticated user - No changes
     public function me(Request $request)
     {
-        return response()->json($request->user());
+        $user = $request->user();
+        // Add premium status based on subscription
+        $user->is_premium = $user->isPremium();
+        return response()->json($user);
     }
 }

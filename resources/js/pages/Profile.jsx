@@ -85,14 +85,6 @@ export default function Profile() {
                             </span>
                         </div>
                     </div>
-
-                    <button
-                        onClick={logout}
-                        className="group flex items-center gap-2 px-5 py-2.5 text-sm font-medium bg-gradient-to-r from-red-500 to-red-600 text-white rounded-xl hover:from-red-600 hover:to-red-700 shadow-md hover:shadow-lg transition-all duration-200"
-                    >
-                        <LogOut size={16} className="group-hover:translate-x-0.5 transition-transform" /> 
-                        Logout
-                    </button>
                 </div>
 
                 {/* Pending Invites */}
@@ -168,9 +160,15 @@ export default function Profile() {
                                                             {/* ✅ Updated view display for per-recipient */}
                                                             <span className="flex items-center gap-1.5 bg-gray-50 px-2 py-1 rounded-full">
                                                                 <Eye size={12} className="text-gray-400" /> 
-                                                                {item.view_count}/{item.max_views} views
-                                                                {isMultiRecipient && (
-                                                                    <span className="text-teal-600 ml-1">(for you)</span>
+                                                                
+                                                                {isMultiRecipient ? (
+                                                                    <>
+                                                                        {item.view_count} total decrypts
+                                                                    </>
+                                                                ) : (
+                                                                    <>
+                                                                        {item.view_count}/{item.max_views} views
+                                                                    </>
                                                                 )}
                                                             </span>
                                                             

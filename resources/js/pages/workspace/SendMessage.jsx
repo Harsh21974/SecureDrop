@@ -2,8 +2,9 @@ import React, { useState, useEffect } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import api from "../../../src/api";
 import { useAuth } from "../../../src/contexts/AuthContext";
-import { encryptForMultipleRecipients } from "../../crypto/keys";
+import { encryptWithPublicKey, encryptForMultipleRecipients } from "../../crypto/keys";
 import { Lock, UploadCloud, FileText, Shield, ArrowLeft, Send, User, X, Plus } from "lucide-react";
+import { set } from "date-fns";
 
 const SendMessage = () => {
     const { workspaceId } = useParams();
@@ -25,6 +26,8 @@ const SendMessage = () => {
     const [searchResults, setSearchResults] = useState([]);
     const [searching, setSearching] = useState(false);
     const [showResults, setShowResults] = useState(false);
+    const [errorMessage, setErrorMessage] = useState("");
+    const [successMessage, setSuccessMessage] = useState("");
     
     const MAX_TEXT_LENGTH = 50000;
     const MAX_FILE_SIZE = 20 * 1024 * 1024;
@@ -43,10 +46,18 @@ const SendMessage = () => {
             fetchSingleRecipient(recipientParam);
         } else {
             setFetching(false);
-            alert("No recipients specified");
+            setErrorMessage("No recipients specified");
             navigate(`/workspaces/${workspaceId}`);
         }
     }, [location, workspaceId]);
+
+    const clearError = () => {
+        setErrorMessage("");
+    };
+
+    const clearSuccess = () => {
+        setSuccessMessage("");
+    };
 
     const fetchSingleRecipient = async (recipientId) => {
         try {
@@ -54,7 +65,7 @@ const SendMessage = () => {
             setRecipients([response.data]);
         } catch (err) {
             console.error("Failed to fetch recipient:", err);
-            alert("Could not load recipient information");
+            setErrorMessage("Could not load recipient information");
             navigate(`/workspaces/${workspaceId}`);
         } finally {
             setFetching(false);
@@ -71,7 +82,7 @@ const SendMessage = () => {
             setRecipients(fetchedRecipients);
         } catch (err) {
             console.error("Failed to fetch recipients:", err);
-            alert("Could not load recipient information");
+            setErrorMessage("Could not load recipient information");
             navigate(`/workspaces/${workspaceId}`);
         } finally {
             setFetching(false);
@@ -122,15 +133,15 @@ const SendMessage = () => {
 
     const handleSend = async () => {
         if (recipients.length === 0) {
-            alert("Please add at least one recipient");
+            setErrorMessage("Please add at least one recipient");
             return;
         }
         if (mode === "text" && !text) {
-            alert("Message cannot be empty");
+            setErrorMessage("Message cannot be empty");
             return;
         }
         if (mode === "file" && !file) {
-            alert("Please select a file");
+            setErrorMessage("Please select a file");
             return;
         }
 
@@ -144,7 +155,7 @@ const SendMessage = () => {
                 buffer = new TextEncoder().encode(text);
             } else {
                 if (file.size > MAX_FILE_SIZE) {
-                    alert("File exceeds 20MB limit");
+                    setErrorMessage("File exceeds 20MB limit");
                     setLoading(false);
                     return;
                 }
@@ -152,39 +163,31 @@ const SendMessage = () => {
                 filename = file.name;
             }
 
-            // Fetch public keys for all recipients
-            const recipientsWithKeys = [];
+            // For workspace messages, we need to send to each recipient separately
+            // or send to the workspace with recipient specified
+            // Currently, send to first recipient only (simplified)
             for (const recipient of recipients) {
+                // Fetch recipient's public key
                 const keyResponse = await api.get(`/keys/public?email=${recipient.email}`);
-                recipientsWithKeys.push({
-                    user_id: recipient.id,
-                    email: recipient.email,
-                    publicKey: keyResponse.data.public_key,
+                const encryptResult = await encryptWithPublicKey(buffer, keyResponse.data.public_key);
+                
+                // ✅ Use the CORRECT endpoint
+                await api.post(`/workspaces/${workspaceId}/messages`, {
+                    recipient_id: recipient.id,
+                    subject: subject,
+                    type: mode,
+                    encrypted_data: encryptResult.encrypted,
+                    filename: filename,
+                    expires_in: expiresIn,
+                    max_views: maxViews,
                 });
             }
             
-            const encryptResult = await encryptForMultipleRecipients(buffer, recipientsWithKeys);
-            
-            const recipientsData = encryptResult.encryptedKeys.map(key => ({
-                email: key.email,
-                encrypted_key: key.encrypted_key,
-            }));
-            
-            await api.post('/secure-items', {
-                type: mode,
-                encrypted_data: encryptResult.encryptedData,
-                filename,
-                expires_in: expiresIn,
-                max_views: maxViews,
-                recipients: recipientsData,
-                encryption_type: "public_key",
-            });
-            
-            alert(`Message sent successfully to ${recipients.length} recipient(s)!`);
+            setSuccessMessage(`Message sent successfully to ${recipients.length} recipient(s)!`);
             navigate(`/workspaces/${workspaceId}/messages`);
         } catch (err) {
             console.error("Failed to send:", err);
-            alert(err.response?.data?.message || "Failed to send message");
+            setErrorMessage(err.response?.data?.message || "Failed to send message");
         } finally {
             setLoading(false);
         }
@@ -205,6 +208,74 @@ const SendMessage = () => {
             </div>
         );
     }
+
+    const ErrorMessage = ({ message, onClose }) => {
+        useEffect(() => {
+            if (message) {
+                const timer = setTimeout(() => {
+                    onClose();
+                }, 5000);
+                return () => clearTimeout(timer);
+            }
+        }, [message]);
+        
+        if (!message) return null;
+        return (
+            <div className="fixed bottom-4 right-4 z-50 animate-slide-in">
+                <div className="bg-red-50 border-l-4 border-red-500 rounded-lg shadow-lg p-4 max-w-sm">
+                    <div className="flex items-start gap-3">
+                        <div className="flex-shrink-0">
+                            <svg className="h-5 w-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                        </div>
+                        <div className="flex-1">
+                            <p className="text-sm text-red-700">{message}</p>
+                        </div>
+                        <button onClick={onClose} className="flex-shrink-0 text-red-400 hover:text-red-600">
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    const SuccessMessage = ({ message, onClose }) => {
+        useEffect(() => {
+            if (message) {
+                const timer = setTimeout(() => {
+                    onClose();
+                }, 3000);
+                return () => clearTimeout(timer);
+            }
+        }, [message]);
+        
+        if (!message) return null;
+        return (
+            <div className="fixed top-4 right-4 z-50 animate-slide-in">
+                <div className="bg-green-50 border-l-4 border-green-500 rounded-lg shadow-lg p-4 max-w-sm">
+                    <div className="flex items-start gap-3">
+                        <div className="flex-shrink-0">
+                            <svg className="h-5 w-5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                        </div>
+                        <div className="flex-1">
+                            <p className="text-sm text-green-700">{message}</p>
+                        </div>
+                        <button onClick={onClose} className="flex-shrink-0 text-green-400 hover:text-green-600">
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    };
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-teal-50 py-8 px-4">
@@ -257,7 +328,11 @@ const SendMessage = () => {
                                 type="text"
                                 placeholder="Add more recipients by name or email..."
                                 value={searchTerm}
-                                onChange={handleSearchChange}
+                                onChange={(e) => {
+                                    setSearchTerm(e.target.value);
+                                    clearError();
+                                    searchRecipient(e.target.value);
+                                }}
                                 className="w-full border border-gray-200 focus:border-teal-500 focus:ring-2 focus:ring-teal-100 rounded-xl py-2.5 px-4 transition"
                             />
                             {showResults && (
@@ -295,7 +370,10 @@ const SendMessage = () => {
                             type="text"
                             placeholder="What's this about?"
                             value={subject}
-                            onChange={(e) => setSubject(e.target.value)}
+                            onChange={(e) => {
+                                setSubject(e.target.value);
+                                clearError();
+                            }}
                             className="w-full border border-gray-200 focus:border-teal-500 focus:ring-2 focus:ring-teal-100 rounded-xl px-4 py-2.5 transition"
                         />
                     </div>
@@ -305,7 +383,10 @@ const SendMessage = () => {
                         {["text", "file"].map((type) => (
                             <button
                                 key={type}
-                                onClick={() => setMode(type)}
+                                onClick={() => {
+                                    setMode(type);
+                                    clearError();
+                                }}
                                 className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg transition ${
                                     mode === type
                                         ? "bg-white shadow-sm text-teal-700 font-semibold"
@@ -326,7 +407,10 @@ const SendMessage = () => {
                                 className="w-full resize-none border border-gray-200 focus:border-teal-500 focus:ring-2 focus:ring-teal-100 rounded-xl p-4 mb-2 bg-white"
                                 placeholder="Type your secure message..."
                                 value={text}
-                                onChange={handleTextChange}
+                                onChange={(e) => {
+                                    handleTextChange(e);
+                                    clearError();
+                                }}
                             />
                             <div className="flex justify-end mb-6">
                                 <span className={`text-xs ${charCount > MAX_TEXT_LENGTH ? 'text-red-500' : 'text-gray-400'}`}>
@@ -344,7 +428,10 @@ const SendMessage = () => {
                                 {file ? file.name : "Click to upload file"}
                             </span>
                             <span className="text-xs text-gray-400 mt-1">Max file size: 20MB</span>
-                            <input type="file" className="hidden" onChange={(e) => setFile(e.target.files[0])} />
+                            <input type="file" className="hidden" onChange={(e) => {
+                                        setFile(e.target.files[0]);
+                                        clearError();
+                                    }} />
                         </label>
                     )}
                     
@@ -354,7 +441,10 @@ const SendMessage = () => {
                             <label className="block text-sm font-medium text-gray-700 mb-2">Expires In</label>
                             <select
                                 value={expiresIn}
-                                onChange={(e) => setExpiresIn(Number(e.target.value))}
+                                onChange={(e) => {
+                                    setExpiresIn(Number(e.target.value));
+                                    clearError();
+                                }}
                                 className="w-full border border-gray-200 focus:border-teal-500 focus:ring-2 focus:ring-teal-100 rounded-xl px-4 py-2.5 bg-white"
                             >
                                 <option value={60}>1 Hour</option>
@@ -369,7 +459,10 @@ const SendMessage = () => {
                             <label className="block text-sm font-medium text-gray-700 mb-2">Max Views (per recipient)</label>
                             <select
                                 value={maxViews}
-                                onChange={(e) => setMaxViews(Number(e.target.value))}
+                                onChange={(e) => {
+                                    setMaxViews(Number(e.target.value));
+                                    clearError();
+                                }}
                                 className="w-full border border-gray-200 focus:border-teal-500 focus:ring-2 focus:ring-teal-100 rounded-xl px-4 py-2.5 bg-white"
                             >
                                 <option value={1}>Read Once</option>
@@ -403,6 +496,8 @@ const SendMessage = () => {
                     </button>
                 </div>
             </div>
+            <ErrorMessage message={errorMessage} onClose={() => setErrorMessage("")} />
+            <SuccessMessage message={successMessage} onClose={() => setSuccessMessage("")} />
         </div>
     );
 };

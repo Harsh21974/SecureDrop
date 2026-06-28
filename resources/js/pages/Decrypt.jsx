@@ -17,6 +17,7 @@ export default function Decrypt() {
     const [loginPassword, setLoginPassword] = useState("");
     const [itemDetails, setItemDetails] = useState(null);
 
+
     useEffect(() => {
         checkLink();
     }, [id]);
@@ -77,13 +78,36 @@ export default function Decrypt() {
                 keyResponse.data.encrypted_private_key,
                 loginPassword
             );
-            
-            const aesKey = await decryptAESKeyForRecipient(
-                result.encrypted_aes_key,
-                userPrivateKeyPem
-            );
-            
-            const decryptedBuffer = await decryptWithAES(result.encrypted_data, aesKey);
+                        
+            let decryptedBuffer;
+
+            // ✅ Check if this is a workspace message
+            if (result.is_workspace_message) {
+                // Workspace message: encrypted_data is directly RSA encrypted with recipient's public key
+                // We need to decrypt it directly with user's private key
+                const { decryptWithPrivateKey } = await import("../crypto/keys");
+                decryptedBuffer = await decryptWithPrivateKey(
+                    result.encrypted_data,
+                    userPrivateKeyPem,
+                    false // Not hybrid
+                );
+            } else {
+                // Regular message: hybrid encryption (AES key encrypted with RSA)
+                const aesKey = await decryptAESKeyForRecipient(
+                    result.encrypted_aes_key,
+                    userPrivateKeyPem
+                );
+                decryptedBuffer = await decryptWithAES(result.encrypted_data, aesKey);
+            }
+            // ✅ Confirm successful view ONLY after successful decryption
+            await fetch(`/api/secure-items/${id}/confirm-view`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Accept: "application/json",
+                    Authorization: `Bearer ${localStorage.getItem('token')}`
+                }
+            });
             
             setShowPasswordPrompt(false);
             setLoginPassword("");

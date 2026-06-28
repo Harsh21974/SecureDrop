@@ -12,6 +12,7 @@ use App\Http\Controllers\WorkspaceInviteController;
 use App\Http\Controllers\KeyController;
 use App\Http\Controllers\WorkspaceMessageController;
 use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\SubscriptionController; 
 
 Route::post('/secure-items', [SecureItemController::class, 'store']);
 Route::get('/secure-items/{token}', [SecureItemController::class, 'show']);
@@ -64,13 +65,28 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // ✅ MOVED DECRYPT ROUTE INSIDE AUTH GROUP
     Route::post('/decrypt/{token}', [SecureItemController::class, 'decrypt']);
+    Route::post('/secure-items/{token}/confirm-view', [SecureItemController::class, 'confirmView']);
 
     Route::get('/notifications', [NotificationController::class, 'index']);
     Route::get('/notifications/unread-count', [NotificationController::class, 'unreadCount']);
     Route::post('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
     Route::post('/notifications/mark-all-read', [NotificationController::class, 'markAllAsRead']);
     Route::delete('/notifications/{id}', [NotificationController::class, 'destroy']);
+
+    Route::get('/subscription/plans', [SubscriptionController::class, 'plans']);
+    Route::get('/subscription/status', [SubscriptionController::class, 'status']);
+    Route::post('/subscription/create-checkout', [SubscriptionController::class, 'createCheckoutSession']);
+    Route::post('/subscription/cancel', [SubscriptionController::class, 'cancelSubscription']);
+    Route::get('/subscription/payment-methods', [SubscriptionController::class, 'getPaymentMethods']);
+    Route::put('/subscription/payment-methods/{id}/default', [SubscriptionController::class, 'setDefaultPaymentMethod']);
+    Route::get('/subscription/invoices', [SubscriptionController::class, 'getInvoices']);
+    Route::post('/subscription/portal', [SubscriptionController::class, 'createPortalSession']);
+    Route::post('/subscription/verify', [SubscriptionController::class, 'verifyAndActivate']);
 });
+
+// Webhook route (no auth)
+Route::post('/stripe/webhook', [App\Http\Controllers\SubscriptionController::class, 'handleWebhook']);
+
 
 
 Route::middleware(['auth:sanctum', \App\Http\Middleware\AdminMiddleware::class])
@@ -81,7 +97,7 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\AdminMiddleware::class])
 
         Route::apiResource('users', App\Http\Controllers\Admin\UserController::class);
         Route::get('/users/{user}/items', [App\Http\Controllers\Admin\UserController::class, 'items']);
-
+        
         Route::apiResource('secure-items', App\Http\Controllers\Admin\SecureItemController::class);
         Route::patch('/secure-items/{id}/revoke', [App\Http\Controllers\Admin\SecureItemController::class, 'revoke']);
     });
@@ -89,3 +105,15 @@ Route::middleware(['auth:sanctum', \App\Http\Middleware\AdminMiddleware::class])
 Route::get('/login', function () {
     return response()->json(['message' => 'Unauthenticated'], 401);
 })->name('login');
+
+Route::get('/user/limits', function() {
+    $user = Auth::user();
+    return response()->json([
+        'is_premium' => $user->isPremium(),
+        'file_size_limit_mb' => $user->getFileSizeLimit(),
+        'max_recipients' => $user->getMaxRecipients(),
+        'max_expiry_days' => $user->getMaxExpiryDays(),
+        'max_views' => $user->isPremium() ? 100 : 10,
+        'messages_remaining' => $user->isPremium() ? 'Unlimited' : max(0, 5 - $user->secureItems()->where('created_at', '>=', now()->startOfMonth())->count()),
+    ]);
+})->middleware('auth:sanctum');
